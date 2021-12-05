@@ -1,6 +1,9 @@
 import boto3
 import botocore
+from datahub.emitter.mcp import MetadataChangeProposalWrapper
+from datahub.emitter.rest_emitter import DatahubRestEmitter
 import typer
+from datahub.metadata.schema_classes import ChangeTypeClass
 
 
 class SQSSource(object):
@@ -41,11 +44,18 @@ class SQSSource(object):
 
 class DataHubSink(object):
 
-    def __init__(self):
-        pass
+    def __init__(self, datahub_emitter: DatahubRestEmitter):
+        self._emitter = datahub_emitter
 
     def write(self, message):
-        pass
+        """
+        Writer that uses example from https://github.com/linkedin/datahub/blob/master/metadata-ingestion/examples/library/lineage_emitter_mcpw_rest.py
+        """
+        mcw = MetadataChangeProposalWrapper(
+            entityType="dataset",
+            changeType=ChangeTypeClass.UPSERT,
+        )
+        self._emitter.emit(mcw)
 
 
 class Pipeline(object):
@@ -58,17 +68,18 @@ class Pipeline(object):
         while True:
             try:
                 message, handle = self._source.read()
-                # transform
+                # TODO transformed should be one of the event messages.
                 transformed = message
                 self._sink.write(transformed)
                 self._source.complete(handle)
             except Exception as e:
-                pass
+                print(f"Failed to replicate Metadata change, will try again. error {e}")
 
 
-def main(queue_name: typer.Option("", help="Name of the queue")):
+def main(queue_name: str = typer.Option(..., help="Name of the queue"),
+         datahub_endpoint: str = typer.Option(..., help="endpoint for datahub")):
     source = SQSSource(name=queue_name)
-    sink = DataHubSink()
+    sink = DataHubSink(datahub_emitter=DatahubRestEmitter(datahub_endpoint))
     p = Pipeline(source=source, sink=sink)
     p.start()
 
