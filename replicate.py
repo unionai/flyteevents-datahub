@@ -121,6 +121,8 @@ class Pipeline(object):
 
     def start(self):
         while True:
+            # Just here to give you time to hit Ctrl-C in case there are too many messages
+            # At the top instead of the bottom cuz we catch exceptions at multiple layers
             time.sleep(5)
             try:
                 message, handle = self._source.read()
