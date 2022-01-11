@@ -37,7 +37,7 @@ data lineage from Flyte. The lineage includes the chain of workflow tasks and an
     --aws_region AWS_REGION                                                                                                       
                             AWS region, default=us-east-1                                                                           
     --datahub_server DATAHUB_SERVER                                                                                               
-                            Datahub server url, default=https://api.datahub.dev.aws.jpmchase.net                                                             
+                            Datahub server url, default=https://api.datahub.dev.aws.great.net                                                             
 
 ## dataset_lineage script
 
@@ -53,7 +53,7 @@ A script is available to ingest datasets into DataHub. The currently supported f
     -p PLATFORM, --platform PLATFORM                                                                                                                                
                             Source platform, default=flyte                                                                                                            
     -s SERVER, --server SERVER                                                                                                                                      
-                            Datahub server url, default=https://api.datahub.dev.aws.jpmchase.net                                                                      
+                            Datahub server url, e.g. https://api.datahub.dev.aws.great.net                                                                      
     -f FILEPATH, --filepath FILEPATH                                                                                                                                
                             dataset filepath                                                                                                                          
     --filetype FILETYPE   file type format, one of csv, json or parquet                                                                                             
