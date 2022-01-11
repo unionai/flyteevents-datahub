@@ -136,7 +136,7 @@ class DataHubSchemaConverter(SchemaConverter):
 class DataHubTarget(TargetSystem):
     def __init__(
         self,
-        server="https://api.datahub.dev.aws.jpmchase.net",
+        server: str,
         platform: str = "flyte",
         env: str = "DEV",
         token=None,

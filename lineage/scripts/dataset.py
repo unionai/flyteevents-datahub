@@ -40,8 +40,7 @@ def dataset_cmd():
         "-s",
         "--server",
         dest="server",
-        default="https://api.datahub.dev.aws.jpmchase.net",
-        help="Datahub server url, default=https://api.datahub.dev.aws.jpmchase.net",
+        help="Datahub server url, e.g. https://api.datahub.dev.aws.great.net",
     )
 
     parser.add_argument("-f", "--filepath", dest="filepath", help="dataset filepath")

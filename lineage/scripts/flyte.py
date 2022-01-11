@@ -38,8 +38,7 @@ def lineage_cmd():
     parser.add_argument(
         "--datahub_server",
         dest="datahub_server",
-        default="https://api.datahub.dev.aws.jpmchase.net",
-        help="Datahub server url, default=https://api.datahub.dev.aws.jpmchase.net",
+        help="Datahub server url, e.g. https://api.datahub.dev.aws.great.net",
     )
 
     parser.add_argument(

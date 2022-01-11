@@ -115,12 +115,12 @@ def test_make_task_snaphot():
         description="get",
         inputs=["covid"],
         outputs=["world_population"],
-        url="https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp",
+        url="https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp",
     )
     snapshot = target.make_task_snaphot(pipeline, task)
     assert (
         str(snapshot)
-        == "DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.get)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.get', 'description': 'get', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid,DEV)'], 'outputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,world_population,DEV)'], 'inputDatajobs': None}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]})"
+        == "DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.get)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.get', 'description': 'get', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid,DEV)'], 'outputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,world_population,DEV)'], 'inputDatajobs': None}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]})"
     )
     from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent
 
@@ -149,7 +149,7 @@ def test_build_mce_pipeline():
         description="get",
         inputs=["covid"],
         outputs=["world_population"],
-        url="https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp",
+        url="https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp",
     )
     task2 = Task(
         id="2",
@@ -158,7 +158,7 @@ def test_build_mce_pipeline():
         inputs=["world_population"],
         outputs=["covid_population"],
         upstream_task_ids=[task1.name],
-        url="https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp",
+        url="https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp",
     )
     task3 = Task(
         id="3",
@@ -166,7 +166,7 @@ def test_build_mce_pipeline():
         description="save",
         inputs=["covid_population"],
         upstream_task_ids=[task2.name],
-        url="https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp",
+        url="https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp",
     )
     task4 = Task(
         id="4",
@@ -174,7 +174,7 @@ def test_build_mce_pipeline():
         description="final",
         inputs=[],
         upstream_task_ids=[task3.name],
-        url="https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp",
+        url="https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp",
     )
     pipeline.tasks = [task1, task2, task3, task4]
     mces = target.build_mce_pipeline(pipeline)
@@ -185,17 +185,17 @@ def test_build_mce_pipeline():
     )
     assert (
         str(mces[1])
-        == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.get)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.get', 'description': 'get', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid,DEV)'], 'outputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,world_population,DEV)'], 'inputDatajobs': None}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
+        == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.get)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.get', 'description': 'get', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid,DEV)'], 'outputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,world_population,DEV)'], 'inputDatajobs': None}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
     )
     assert (
         str(mces[2])
-        == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.filter_data)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.filter_data', 'description': 'filter_data', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,world_population,DEV)'], 'outputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid_population,DEV)'], 'inputDatajobs': ['urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.get)']}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
+        == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.filter_data)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.filter_data', 'description': 'filter_data', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,world_population,DEV)'], 'outputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid_population,DEV)'], 'inputDatajobs': ['urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.get)']}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
     )
     assert (
         str(mces[3])
-        == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.save)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.save', 'description': 'save', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid_population,DEV)'], 'outputDatasets': [], 'inputDatajobs': ['urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.filter_data)']}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
+        == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.save)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.save', 'description': 'save', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid_population,DEV)'], 'outputDatasets': [], 'inputDatajobs': ['urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.filter_data)']}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
     )
     assert (
         str(mces[4])
-        == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.final)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.jpmchase.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.final', 'description': 'final', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': [], 'outputDatasets': [], 'inputDatajobs': ['urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.save)']}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
+        == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.final)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.final', 'description': 'final', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': [], 'outputDatasets': [], 'inputDatajobs': ['urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.save)']}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
     )

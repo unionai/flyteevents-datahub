@@ -69,10 +69,10 @@ A script is available to ingest datasets into DataHub. The currently supported f
 
 ## Development
 
-    $ git clone ssh://git@bitbucketdc-ssh.jpmchase.net:7999/cibdaos/lineage.git
-    $ cd lineage              
+    $ git clone https://github.com/unionai/flyteevents-datahub.git
+    $ cd flyteevents-datahub
     $ python -m venv env                                                                                
-    $ env\Scripts\activate                                                                       
+    $ source env/bin/activate                                                                      
     $ pip install -r requirements.txt
     $ python setup.py develop
 
