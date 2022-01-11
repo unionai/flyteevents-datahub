@@ -1,4 +1,8 @@
-flytekit>=0.24.0
+flytekit
+awscli
 boto3>=1.20.20
 typer
 acryl-datahub
+pandas
+pyarrow
+numpy
