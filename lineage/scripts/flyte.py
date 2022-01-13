@@ -55,7 +55,7 @@ def lineage_cmd():
         logging.config.fileConfig(config)
     except Exception as e:
         print(
-            "Unable to configure logging use '-c path_to_config_file' to configure, error={e}"
+            f"Unable to configure logging use '-c path_to_config_file' to configure, error={e}"
         )
         sys.exit(-1)
 
