@@ -274,7 +274,7 @@ class Workflow(object):
 
     def emit_pipeline(self, events: typing.List):
         pipeline = self.create_pipeline(events)
-        if pipeline and self.emit:
+        if self.emit:
             self.target.emit_pipeline(pipeline)
 
 
