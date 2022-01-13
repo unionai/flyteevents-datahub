@@ -3,6 +3,9 @@ import typing
 import time
 import base64
 import json
+from datetime import datetime, timezone
+import configparser
+import os
 
 from .interface import TargetSystem, Pipeline, Task
 from lineage import error_traceback
@@ -18,6 +21,8 @@ from flytekit.types.schema.types import FlyteSchema
 from flytekit.common.exceptions.user import FlyteAssertion
 from google.protobuf.timestamp_pb2 import Timestamp
 import boto3
+from botocore.session import get_session, Session
+from retry import retry
 
 logger = logging.getLogger()
 
@@ -37,9 +42,10 @@ EVENT_TYPES = typing.Union[
 
 
 class SQSSource(object):
-    def __init__(self, name: str, region_name="us-east-1"):
+    def __init__(self, name: str, region_name="us-east-1", session=None):
         self._name = name
-        self._sqs = boto3.client("sqs", region_name=region_name)
+        session = session or get_session()
+        self._sqs = session.create_client("sqs", region_name=region_name)
         response = self._sqs.get_queue_url(QueueName=name)
         self._queue_url = response["QueueUrl"]
 
@@ -95,11 +101,12 @@ class Workflow(object):
                 # TODO: handle parquet data sets split over multiple frame files
                 files = fs.local_path + r"/00000"
                 df = reader._read(files)
-                logger.debug(f"able to read schema data len={len(df)}")
+                logger.info(f"read dataset rows={len(df)}")
                 r.append(df)
         return r
 
     def fetch_schemas(self, event: event_pb2.NodeExecutionEvent):
+        # an example node execution event that is populating the cache
         """
         event {
         id {
@@ -165,10 +172,6 @@ class Workflow(object):
                             )
                             schemas.append((schema, source_schema))
 
-            elif event.HasField("output_data"):
-                # The output_data field is just a auto-generated python class object, convert it into our
-                # nicer model class.
-                pass
         except Exception as e:
             msg = f"Unable to fetch data sets: error={e}, traceback={error_traceback()}"
             logger.warning(msg)
@@ -200,7 +203,7 @@ class Workflow(object):
         node_events = self.get_successful_node_events(events)
         number_of_tasks = len(task_events)
         number_of_nodes = len(node_events)
-        # number_of_tasks == number_of_nodes
+        # assert number_of_tasks == number_of_nodes
 
         tasks = []
         task_id = None
@@ -271,7 +274,7 @@ class Workflow(object):
 
     def emit_pipeline(self, events: typing.List):
         pipeline = self.create_pipeline(events)
-        if self.emit:
+        if pipeline and self.emit:
             self.target.emit_pipeline(pipeline)
 
 
@@ -356,41 +359,37 @@ class EventProcesser(object):
         completed = False
         # assuming here there is always an output uri even for void returns
         if self.has_successful_workflow(events):
-            # queue is not FIFO, node & task events can arrive after the workflow completed event
-            # only interested in non cached tasks that are run otherwise num tasks < num nodes
+            # current policy is to only capture workflows when all tasks have been executed
+            # this excludes any workflows with tasks outputs retrieved from the cache
+            # these don't run the task so there is no corresponding task event for the node  
             completed = len(Workflow.get_successful_task_events(events)) == len(
                 Workflow.get_successful_node_events(events).keys()
             )
         return completed
 
+    @retry(delay=1, tries=10, backoff=1.2, logger=logging)
     def start(self, workflow: Workflow):
         while True:
+            message, handle = self.sqs_source.read()
+            if not self.is_a_flyte_event(message):
+                continue
             try:
-                time.sleep(0.5)  # avoid tight loop for sqs issue like expired creds
-                message, handle = self.sqs_source.read()
-                if not self.is_a_flyte_event(message):
-                    continue
-                try:
-                    event_request = self.transform_message(message)
-                    logger.debug(f"transformed: {event_request}")
-                    workflow_id = self.add_event(event_request)
-                    # wait until all workflow events have arrived before ingesting
-                    if self.is_successful_new_workflow(self._db[workflow_id]):
-                        # events might not arrive in order
-                        events = sorted(
-                            self._db.pop(workflow_id), key=event_comparison_key
+                event_request = self.transform_message(message)
+                logger.debug(f"transformed: {event_request}")
+                workflow_id = self.add_event(event_request)
+                # wait until all workflow events have arrived before ingesting
+                if self.is_successful_new_workflow(self._db[workflow_id]):
+                    # events might not arrive in order
+                    events = sorted(self._db.pop(workflow_id), key=event_comparison_key)
+                    # events shoube be >= 8 as 8 events are produced per task
+                    if len(events) > 7:
+                        logger.info(f"emit_pipeline for workflow: {workflow_id}")
+                        workflow.emit_pipeline(events)
+                        logger.info(
+                            f"workflow '{workflow_id}' emitted to target lineage system"
                         )
-                        # events shoube be >= 8 as 8 events are produced per task
-                        if len(events) > 7:
-                            logger.info(f"emit_pipeline for workflow: {workflow_id}")
-                            workflow.emit_pipeline(events)
-                            logger.info(
-                                f"workflow '{workflow_id}' emitted to target lineage system"
-                            )
-                except Exception as e:
-                    msg = f"exception: error={e}, traceback={error_traceback()}"
-                    logger.error(msg)
-                finally:
-                    self.sqs_source.complete(handle)
             except Exception as e:
-                logger.error(f"SQS issue, will try again. error {e}")
+                msg = f"error: exception={e}, traceback={error_traceback()}"
+                logger.error(msg)
+            finally:
+                self.sqs_source.complete(handle)

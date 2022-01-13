@@ -8,7 +8,7 @@ from lineage.interface import (
 from lineage.datahub import DataHubTarget, DatasetSchema
 from lineage import error_traceback
 from lineage.scripts import get_default_config, asbool
-from lineage.flyte import EventProcesser, Workflow, SQSSource
+from lineage.flyte_events import EventProcesser, Workflow, SQSSource
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,7 @@ def lineage_cmd():
     parser.add_argument(
         "--datahub_server",
         dest="datahub_server",
+        required=True,
         help="Datahub server url, e.g. https://api.datahub.dev.aws.great.net",
     )
 
@@ -52,8 +53,10 @@ def lineage_cmd():
     config = args.config or get_default_config()
     try:
         logging.config.fileConfig(config)
-    except:
-        print("Unable to configure logging use '-c path_to_config_file' to configure.")
+    except Exception as e:
+        print(
+            "Unable to configure logging use '-c path_to_config_file' to configure, error={e}"
+        )
         sys.exit(-1)
 
     emit = asbool(args.emit)
@@ -64,6 +67,6 @@ def lineage_cmd():
         workflow = Workflow(target=DataHubTarget(server=args.datahub_server), emit=emit)
         event_processer.start(workflow=workflow)
     except Exception as e:
-        msg = "exception: error={}, traceback={}".format(e, error_traceback())
+        msg = f"error: exception={e}, traceback={error_traceback()}"
         logger.error(msg)
         sys.exit(-1)

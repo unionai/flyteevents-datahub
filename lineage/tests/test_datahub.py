@@ -39,7 +39,7 @@ def test_convert():
 def make_target(**kwargs):
     from lineage.datahub import DataHubTarget
 
-    return DataHubTarget(test_connection=False, **kwargs)
+    return DataHubTarget(server="https://a.com", test_connection=False, **kwargs)
 
 
 def test_make_pipeline_snaphot():
