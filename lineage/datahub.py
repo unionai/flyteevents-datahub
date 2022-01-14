@@ -162,9 +162,9 @@ class DataHubTarget(TargetSystem):
     ):
         platform = self.platform
         env = self.env
-        logger.info(f"make_dataset_snapshot: {dataset_schema.name}")
+        logger.info(f"creating dataset snapshot: {dataset_schema.name}")
         logger.debug(
-            f"make_dataset_snapshot: dataset: {dataset_schema}, datahub: {schema}"
+            f"dataset: {dataset_schema}, datahub: {schema}"
         )
         dataset_urn = mce_builder.make_dataset_urn(platform, dataset_schema.name, env)
         dataset_snapshot = DatasetSnapshot(

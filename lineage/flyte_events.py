@@ -140,6 +140,7 @@ class SQSSource(object):
             logger.info(f"lookup the queue url with name={name}")
             response = self._sqs.get_queue_url(QueueName=name)
             self._queue_url = response["QueueUrl"]
+        logger.info(f"will be reading from queue: {self._queue_url}")    
 
     def read(self):
         # Receive message from SQS queue
@@ -159,7 +160,7 @@ class SQSSource(object):
 
     def complete(self, receipt_handle):
         self._sqs.delete_message(QueueUrl=self._queue_url, ReceiptHandle=receipt_handle)
-        logger.info(f"Received and deleted message: {receipt_handle}")
+        logger.debug(f"Received and deleted message: {receipt_handle}")
 
 
 class Workflow(object):
@@ -246,7 +247,7 @@ class Workflow(object):
                 if lm:
                     datasets = self.extract_all_schemas(lm)
                     if datasets:
-                        logger.info(f"Found datasets from output_uri")
+                        logger.info(f"Found {len(datasets)} datasets")
                         logger.debug(datasets)
                         for i, dataset in enumerate(datasets):
                             # What about the dataset name?
@@ -362,7 +363,9 @@ class Workflow(object):
         schema_converter = target.make_schema_converter()
         datahub_schema = schema_converter.convert(source_schema)
         if self.emit:
+            logger.info(f"emitting dataset {dataset_schema.name}")
             target.emit_dataset(datahub_schema, dataset_schema)
+            logger.info("emitted dataset")
 
     def emit_pipeline(self, events: typing.List):
         pipeline = self.create_pipeline(events)
@@ -424,6 +427,7 @@ class EventProcesser(object):
     def add_event(self, event_request: EVENT_TYPES):
         workflow_id = self.get_workflow_id(event_request)
         if workflow_id not in self._db:
+            logger.info(f"receiving events for workflow: {workflow_id}")
             self._db[workflow_id] = []
         self._db[workflow_id].append(event_request)
         return workflow_id
@@ -473,6 +477,7 @@ class EventProcesser(object):
                 if self.is_successful_new_workflow(self._db[workflow_id]):
                     # events might not arrive in order
                     events = sorted(self._db.pop(workflow_id), key=event_comparison_key)
+                    logger.info(f"processing {len(events)} events for workflow {workflow_id}")
                     # events shoube be >= 8 as 8 events are produced per task
                     if len(events) > 7:
                         logger.info(f"emit_pipeline for workflow: {workflow_id}")
