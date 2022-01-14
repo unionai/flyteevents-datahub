@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import sys
+import os
 from argparse import ArgumentParser
 from lineage.interface import (
     TargetSystem,
@@ -8,7 +9,13 @@ from lineage.interface import (
 from lineage.datahub import DataHubTarget, DatasetSchema
 from lineage import error_traceback
 from lineage.scripts import get_default_config, asbool
-from lineage.flyte_events import EventProcesser, Workflow, SQSSource
+from lineage.flyte_events import (
+    EventProcesser,
+    Workflow,
+    SQSSource,
+    AWSRefreshableRoleCredentials,
+    AWSRefreshableFileCredentials,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +33,7 @@ def lineage_cmd():
         "--sqs_queue",
         dest="sqs_queue",
         default="103020-flyte-events",
-        help="SQS queue name, default=103020-flyte-events",
+        help="SQS queue name or url, default=103020-flyte-events",
     )
     parser.add_argument(
         "--aws_region",
@@ -54,15 +61,25 @@ def lineage_cmd():
     try:
         logging.config.fileConfig(config)
     except Exception as e:
-        print(
-            f"Unable to configure logging use '-c path_to_config_file' to configure, error={e}"
-        )
+        print(f"To configure use '-c path_to_config_file', error={e}")
         sys.exit(-1)
 
     emit = asbool(args.emit)
     try:
+        web_token_file_path = os.getenv("AWS_WEB_IDENTITY_TOKEN_FILE", None)
+        if web_token_file_path:
+            refreshable_creds = AWSRefreshableRoleCredentials(
+                web_token_file_path=web_token_file_path
+            )
+        else:
+            logger.info("running locally using AWSRefreshableFileCredentials")
+            refreshable_creds = AWSRefreshableFileCredentials(profile_name="adfs")
         event_processer = EventProcesser(
-            sqs_source=SQSSource(name=args.sqs_queue, region_name=args.aws_region)
+            sqs_source=SQSSource(
+                name=args.sqs_queue,
+                region_name=args.aws_region,
+                session=refreshable_creds.setup_aws_session(),
+            )
         )
         workflow = Workflow(target=DataHubTarget(server=args.datahub_server), emit=emit)
         event_processer.start(workflow=workflow)

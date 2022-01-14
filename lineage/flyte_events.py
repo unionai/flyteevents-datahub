@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 import configparser
 import os
+from abc import ABC, abstractmethod
 
 from .interface import TargetSystem, Pipeline, Task
 from lineage import error_traceback
@@ -21,10 +22,11 @@ from flytekit.types.schema.types import FlyteSchema
 from flytekit.common.exceptions.user import FlyteAssertion
 from google.protobuf.timestamp_pb2 import Timestamp
 import boto3
+from botocore.credentials import RefreshableCredentials
 from botocore.session import get_session, Session
 from retry import retry
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 # TODO: reference the protobuf values directly
@@ -41,13 +43,103 @@ EVENT_TYPES = typing.Union[
 ]
 
 
+def _utc_now():
+    return datetime.now(timezone.utc)
+
+
+class AWSRefreshableCredentials(ABC):
+    def __init__(self, utc_expiry=True, method=None):
+        self.utc_expiry = utc_expiry
+        self.method = method or ""
+
+    @abstractmethod
+    def external_credentials(self):
+        pass
+
+    def setup_aws_session(self):
+        logger.info("setup refreshable aws session creds ...")
+        refresh_session = get_session()
+
+        session_credentials = RefreshableCredentials.create_from_metadata(
+            metadata=self.external_credentials(),
+            refresh_using=self.external_credentials,
+            method=self.method,
+        )
+        if self.utc_expiry:
+            # RefreshableCredentials uses local time for the refresh check
+            session_credentials._time_fetcher = _utc_now
+        logger.info(
+            f"set to refesh in {int(session_credentials._seconds_remaining()/60.0)}m"
+        )
+        refresh_session._credentials = session_credentials
+        return refresh_session
+
+
+class AWSRefreshableFileCredentials(AWSRefreshableCredentials):
+    def __init__(self, aws_credentials_file=None, profile_name="default"):
+        super().__init__(utc_expiry=True, method="config-credentials-file-reader")
+        self.profile_name = profile_name
+        self.aws_credentials_file = aws_credentials_file or os.path.join(
+            os.getenv("HOME"), ".aws", "credentials"
+        )
+        self.config = configparser.ConfigParser()
+
+    def external_credentials(self):
+        config = self.config
+        if not self.aws_credentials_file:
+            return {}
+        response = config.read(self.aws_credentials_file)
+        if not response:
+            raise ValueError(
+                f"Unable to read AWS credentials file '{self.aws_credentials_file}'"
+            )
+        aws_config = config[self.profile_name]
+        logger.debug(f"Refreshing aws credentials from: {self.aws_credentials_file}")
+        return {
+            "access_key": aws_config["aws_access_key_id"],
+            "secret_key": aws_config["aws_secret_access_key"],
+            "token": aws_config["aws_session_token"],
+            "expiry_time": aws_config["aws_credential_expiration"],
+        }
+
+
+class AWSRefreshableRoleCredentials(AWSRefreshableCredentials):
+    def __init__(self, role_arn=None, web_token_file_path=None):
+        super().__init__(method="sts_role_with_web_id_token_file")
+        self.role_arn = role_arn or os.getenv("AWS_ROLE_ARN")
+        self.web_token_file_path = web_token_file_path or os.getenv(
+            "AWS_WEB_IDENTITY_TOKEN_FILE"
+        )
+
+    def external_credentials(self):
+        with open(self.web_token_file_path, "r") as content_file:
+            web_identity_token = content_file.read()
+            role = boto3.client("sts").assume_role_with_web_identity(
+                RoleArn=self.role_arn,
+                RoleSessionName="assume-role",
+                WebIdentityToken=web_identity_token,
+            )
+            credentials = role["Credentials"]
+            expiry = credentials["Expiration"].astimezone(timezone.utc).isoformat()
+            return {
+                "access_key": credentials["AccessKeyId"],
+                "secret_key": credentials["SecretAccessKey"],
+                "token": credentials["SessionToken"],
+                "expiry_time": expiry,
+            }
+
+
 class SQSSource(object):
     def __init__(self, name: str, region_name="us-east-1", session=None):
         self._name = name
         session = session or get_session()
         self._sqs = session.create_client("sqs", region_name=region_name)
-        response = self._sqs.get_queue_url(QueueName=name)
-        self._queue_url = response["QueueUrl"]
+        if "amazonaws.com" in name:
+            self._queue_url = name
+        else:
+            logger.info(f"lookup the queue url with name={name}")
+            response = self._sqs.get_queue_url(QueueName=name)
+            self._queue_url = response["QueueUrl"]
 
     def read(self):
         # Receive message from SQS queue
@@ -361,7 +453,7 @@ class EventProcesser(object):
         if self.has_successful_workflow(events):
             # current policy is to only capture workflows when all tasks have been executed
             # this excludes any workflows with tasks outputs retrieved from the cache
-            # these don't run the task so there is no corresponding task event for the node  
+            # these don't run the task so there is no corresponding task event for the node
             completed = len(Workflow.get_successful_task_events(events)) == len(
                 Workflow.get_successful_node_events(events).keys()
             )
