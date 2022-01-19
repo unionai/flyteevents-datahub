@@ -1,0 +1,4 @@
+black
+pytest
+codecov
+pytest-cov
