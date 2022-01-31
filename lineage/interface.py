@@ -28,6 +28,12 @@ class Pipeline(BaseModel):
     metadata: typing.Dict = {}
     url: str = ""
 
+    def number_of_tasks(self):
+        return len(self.tasks)
+
+    def task_names(self):
+        return list([x.name for x in self.tasks])
+
 
 class SchemaConverter(ABC):
     """SchemaConverter
@@ -36,7 +42,7 @@ class SchemaConverter(ABC):
     """
 
     @abstractmethod
-    def convert(self, source_schema: pa.Schema) -> typing.List[typing.Any]:
+    def convert(self, source_schema: pa.Schema) -> typing.Any:
         pass
 
 

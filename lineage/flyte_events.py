@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 import configparser
 import os
-from abc import ABC, abstractmethod
+
 
 from .interface import TargetSystem, Pipeline, Task
 from lineage import error_traceback
@@ -22,7 +22,6 @@ from flytekit.types.schema.types import FlyteSchema
 from flytekit.common.exceptions.user import FlyteAssertion
 from google.protobuf.timestamp_pb2 import Timestamp
 import boto3
-from botocore.credentials import RefreshableCredentials
 from botocore.session import get_session, Session
 from retry import retry
 
@@ -33,6 +32,7 @@ logger = logging.getLogger(__name__)
 NodeAndTaskExecutionPhaseSucceeded = 3
 WorkflowExecutionPhaseSucceeding = 3
 WorkflowExecutionPhaseSucceeded = 4
+CACHE_DISABLED = 0
 CACHE_POPULATED = 3
 DATASET = 4
 
@@ -41,92 +41,6 @@ EVENT_TYPES = typing.Union[
     admin_event_pb2.NodeExecutionEventRequest,
     admin_event_pb2.WorkflowExecutionEventRequest,
 ]
-
-
-def _utc_now():
-    return datetime.now(timezone.utc)
-
-
-class AWSRefreshableCredentials(ABC):
-    def __init__(self, utc_expiry=True, method=None):
-        self.utc_expiry = utc_expiry
-        self.method = method or ""
-
-    @abstractmethod
-    def external_credentials(self):
-        pass
-
-    def setup_aws_session(self):
-        logger.info("setup refreshable aws session creds ...")
-        refresh_session = get_session()
-
-        session_credentials = RefreshableCredentials.create_from_metadata(
-            metadata=self.external_credentials(),
-            refresh_using=self.external_credentials,
-            method=self.method,
-        )
-        if self.utc_expiry:
-            # RefreshableCredentials uses local time for the refresh check
-            session_credentials._time_fetcher = _utc_now
-        logger.info(
-            f"set to refesh in {int(session_credentials._seconds_remaining()/60.0)}m"
-        )
-        refresh_session._credentials = session_credentials
-        return refresh_session
-
-
-class AWSRefreshableFileCredentials(AWSRefreshableCredentials):
-    def __init__(self, aws_credentials_file=None, profile_name="default"):
-        super().__init__(utc_expiry=True, method="config-credentials-file-reader")
-        self.profile_name = profile_name
-        self.aws_credentials_file = aws_credentials_file or os.path.join(
-            os.getenv("HOME"), ".aws", "credentials"
-        )
-        self.config = configparser.ConfigParser()
-
-    def external_credentials(self):
-        config = self.config
-        if not self.aws_credentials_file:
-            return {}
-        response = config.read(self.aws_credentials_file)
-        if not response:
-            raise ValueError(
-                f"Unable to read AWS credentials file '{self.aws_credentials_file}'"
-            )
-        aws_config = config[self.profile_name]
-        logger.debug(f"Refreshing aws credentials from: {self.aws_credentials_file}")
-        return {
-            "access_key": aws_config["aws_access_key_id"],
-            "secret_key": aws_config["aws_secret_access_key"],
-            "token": aws_config["aws_session_token"],
-            "expiry_time": aws_config["aws_credential_expiration"],
-        }
-
-
-class AWSRefreshableRoleCredentials(AWSRefreshableCredentials):
-    def __init__(self, role_arn=None, web_token_file_path=None):
-        super().__init__(method="sts_role_with_web_id_token_file")
-        self.role_arn = role_arn or os.getenv("AWS_ROLE_ARN")
-        self.web_token_file_path = web_token_file_path or os.getenv(
-            "AWS_WEB_IDENTITY_TOKEN_FILE"
-        )
-
-    def external_credentials(self):
-        with open(self.web_token_file_path, "r") as content_file:
-            web_identity_token = content_file.read()
-            role = boto3.client("sts").assume_role_with_web_identity(
-                RoleArn=self.role_arn,
-                RoleSessionName="assume-role",
-                WebIdentityToken=web_identity_token,
-            )
-            credentials = role["Credentials"]
-            expiry = credentials["Expiration"].astimezone(timezone.utc).isoformat()
-            return {
-                "access_key": credentials["AccessKeyId"],
-                "secret_key": credentials["SecretAccessKey"],
-                "token": credentials["SessionToken"],
-                "expiry_time": expiry,
-            }
 
 
 class SQSSource(object):
@@ -140,7 +54,7 @@ class SQSSource(object):
             logger.info(f"lookup the queue url with name={name}")
             response = self._sqs.get_queue_url(QueueName=name)
             self._queue_url = response["QueueUrl"]
-        logger.info(f"will be reading from queue: {self._queue_url}")    
+        logger.info(f"will be reading from queue: {self._queue_url}")
 
     def read(self):
         # Receive message from SQS queue
@@ -163,10 +77,11 @@ class SQSSource(object):
         logger.debug(f"Received and deleted message: {receipt_handle}")
 
 
-class Workflow(object):
-    def __init__(self, target: TargetSystem, emit=True):
-        self.target = target
+class WorkflowEvents(object):
+    def __init__(self, targets, emit=True, datasets_only=False):
+        self.targets = targets
         self.emit = emit
+        self.datasets_only = datasets_only
 
     def get_literal_map_from_uri(
         self, remote_path: str
@@ -175,7 +90,12 @@ class Workflow(object):
         local_path = ctx.file_access.get_random_local_path()
         try:
             ctx.file_access.get_data(remote_path, local_path)
-        except FlyteAssertion:
+        except FlyteAssertion as e:
+            # Getting this error using s3fs
+            # Original exception: The request signature we calculated does not match the signature you provided. Check your key and signing method.
+            logger.warning(
+                f"FlyteAssertion copying remote={remote_path} to local={local_path}, error={e}"
+            )
             return None
 
         with open(local_path, "rb") as reader:
@@ -184,89 +104,102 @@ class Workflow(object):
             # The output_data field is just a auto-generated python class object, convert it into our nicer model class.
             return literals.LiteralMap.from_flyte_idl(lm_pb)
 
-    def extract_all_schemas(self, lm: literals.LiteralMap) -> typing.List[FlyteSchema]:
+    def extract_all_datasets(self, lm: literals.LiteralMap):
         ctx = FlyteContextManager.current_context()
-        r = []
+        datasets = []
         for k, v in lm.literals.items():
-            if v.scalar and v.scalar.schema:
-                fs = TypeEngine.to_python_value(ctx, v, FlyteSchema)
-                reader = fs.open()
-                # TODO: handle parquet data sets split over multiple frame files
-                files = fs.local_path + r"/00000"
-                df = reader._read(files)
-                logger.info(f"read dataset rows={len(df)}")
-                r.append(df)
-        return r
+            # TODO: handle collections
+            if v.scalar:
+                if v.scalar.schema:
+                    fs = TypeEngine.to_python_value(ctx, v, FlyteSchema)
+                    reader = fs.open()
+                    # TODO: handle parquet data sets split over multiple frame files?
+                    parquet_file = r"/00000"
+                    files = fs.local_path + parquet_file
+                    df = reader._read(files)
+                    logger.info(f"read dataset rows={len(df)}")
+                    datasets.append((df, v.scalar.schema.uri + parquet_file))
+                # TODO: handle v.scalar.blob
+        return datasets
 
-    def fetch_schemas(self, event: event_pb2.NodeExecutionEvent):
-        # an example node execution event that is populating the cache
-        """
-        event {
-        id {
-            node_id: "n1"
-            execution_id {
-            project: "poc"
-            domain: "development"
-            name: "faffp5fg4t"
-            }
-        }
-        phase: SUCCEEDED
-        occurred_at {
-            seconds: 1641493633
-            nanos: 928646612
-        }
-        input_uri: "s3://app-id-103020-dep-id-103021-uu-id-5qqzivkh5yaj/metadata/propeller/poc-development-faffp5fg4t/n1/data/inputs.pb"
-        output_uri: "s3://app-id-103020-dep-id-103021-uu-id-5qqzivkh5yaj/metadata/propeller/poc-development-faffp5fg4t/n1/data/0/outputs.pb"
-        spec_node_id: "n1"
-        node_name: "flytekit.core.python_function_task.news.workflows.covid.filter_data"
-        task_node_metadata {
-            cache_status: CACHE_POPULATED
-            catalog_key {
-            dataset_id {
-                resource_type: DATASET
-                project: "poc"
-                domain: "development"
-                name: "flyte_task-news.workflows.covid.filter_data"
-                version: "1.0-Ii9-ktJ0-c5per3_7"
-            }
-            artifact_tag {
-                artifact_id: "6e466e7f-70f3-434a-b143-9bdfbe70326c"
-                name: "flyte_cached-Av7uhW5T1i1vNtEXNzl9g-LGkTLhRRQ7-rO50b9yaTI"
-            }
-            }
-        }
-        """
+    def get_schemas(self, uri, name, version, created):
+        lm = self.get_literal_map_from_uri(uri)
+        logger.debug(f"literal_map: {lm}")
+        schemas = []
+        if lm:
+            datasets_info = self.extract_all_datasets(lm)
+            if datasets_info:
+                logger.info(f"Found {len(datasets_info)} datasets")
+                logger.debug(datasets_info)
+                for i, dataset_info in enumerate(datasets_info):
+                    dataset, uri = dataset_info
+                    # What about the dataset name?
+                    # using task_id.name + + o{arg_number} e.g. "news.workflows.covid.get.o1"
+                    # TODO: if name exists in the metadata, use that. Will need to preserve
+                    # metadata across io pandas -> parquet -> pandas
+                    metadata = dict(uri=uri)
+                    schema, source_schema = infer_schema(
+                        dataset,
+                        f"{name}{i}",
+                        version=version,
+                        created=created,
+                        metadata=metadata,
+                    )
+                    schemas.append((schema, source_schema))
+        return schemas
+
+    def get_task_version(self, task_event):
+        # DataHub does not support string versions only ints
+        try:
+            version = int(task_event.task_id.version)
+        except:
+            version = 0
+        return version
+
+    def fetch_input_schemas(self, task_event, node_event):
         schemas = []
         try:
-            metadata = event.task_node_metadata
-            name = metadata.catalog_key.dataset_id.name
-            version = metadata.catalog_key.dataset_id.version
-            artifact_id = metadata.catalog_key.artifact_tag.artifact_id
-            if event.HasField("output_uri"):
-                lm = self.get_literal_map_from_uri(event.output_uri)
-                if lm:
-                    datasets = self.extract_all_schemas(lm)
-                    if datasets:
-                        logger.info(f"Found {len(datasets)} datasets")
-                        logger.debug(datasets)
-                        for i, dataset in enumerate(datasets):
-                            # What about the dataset name?
-                            # using dataset_id.name + + o{node}
-                            # e.g. "flyte_task-news.workflows.covid.filter_data.o1"
-                            # TODO: if name exists in the metadata, use that. Will need to preserve
-                            # metadata across io pandas -> parquet -> pandas
-                            # DataHub does not support string versions
-                            metadata = dict(version=version)
-                            schema, source_schema = infer_schema(
-                                dataset,
-                                f"{name}.o{i}",
-                                created=event.occurred_at.ToDatetime(),
-                                metadata=metadata,
-                            )
-                            schemas.append((schema, source_schema))
+            name = task_event.task_id.name
+            version = self.get_task_version(task_event)
+            logger.debug(f"fetching input schemas for task '{name}'")
+            metadata = node_event.task_node_metadata
+            logger.debug(f"task node metadata: {metadata}")
+
+            if task_event.input_uri is not None:
+                schemas = self.get_schemas(
+                    task_event.input_uri,
+                    f"{name}.i",
+                    version,
+                    task_event.occurred_at.ToDatetime(),
+                )
 
         except Exception as e:
-            msg = f"Unable to fetch data sets: error={e}, traceback={error_traceback()}"
+            msg = f"Unable to fetch input schemas: error={e}, traceback={error_traceback()}"
+            logger.warning(msg)
+        return schemas
+
+    def fetch_output_schemas(self, task_event, node_event):
+
+        schemas = []
+        try:
+            name = task_event.task_id.name
+            version = self.get_task_version(task_event)
+            logger.debug(f"fetching output schemas for task '{name}'")
+            metadata = node_event.task_node_metadata
+            if not metadata.cache_status in (CACHE_DISABLED, CACHE_POPULATED):
+                logger.debug(f"skip datasets being retrieved from the cache")
+                return schemas
+
+            if task_event.HasField("output_uri"):
+                schemas = self.get_schemas(
+                    task_event.output_uri,
+                    f"{name}.o",
+                    version,
+                    task_event.occurred_at.ToDatetime(),
+                )
+
+        except Exception as e:
+            msg = f"Unable to fetch output schemas: error={e}, traceback={error_traceback()}"
             logger.warning(msg)
         return schemas
 
@@ -291,11 +224,17 @@ class Workflow(object):
             ]
         )
 
-    def create_pipeline(self, events: typing.List):
+    def create_pipeline(self, events):
         task_events = self.get_successful_task_events(events)
         node_events = self.get_successful_node_events(events)
         number_of_tasks = len(task_events)
         number_of_nodes = len(node_events)
+        logger.debug(
+            f"create_pipeline number_of_tasks={number_of_tasks}, number_of_nodes={number_of_nodes}"
+        )
+        logger.debug(f"ok task events: {task_events}")
+        logger.debug(f"ok node events: {node_events}")
+
         # assert number_of_tasks == number_of_nodes
 
         tasks = []
@@ -323,30 +262,28 @@ class Workflow(object):
             task.upstream_task_ids = [tasks[i][0].name]
 
         all_schemas = []
-        logger.info("wire any output dataset cached schemas ...")
+        logger.info("wire any output dataset schemas ...")
         for i, task_info in enumerate(tasks):
             task, task_event = task_info
             node_id = f"n{i}"
             node_event = node_events[node_id]
-            if (
-                hasattr(node_event.event, "task_node_metadata")
-                and node_event.event.task_node_metadata.cache_status == CACHE_POPULATED
-            ):
-                schemas = self.fetch_schemas(node_event.event)
+            if i == 0:
+                schemas = self.fetch_input_schemas(task_event, node_event.event)
                 if schemas:
-                    # wire dataset names to task outputs
-                    task.outputs = [x[0].name for x in schemas]
-                    logger.info(f"found schemas: {task.outputs}")
-                    next_index = i + 1
-                    if task.outputs and next_index <= number_of_tasks:
-                        tasks[next_index][0].inputs = task.outputs
-                    try:
-                        for schema_info in schemas:
-                            # emit dataset as its own entity
-                            self.emit_dataset(schema_info)
-                    except Exception as e:
-                        msg = f"Unable to emit data sets: error={e}, traceback={error_traceback()}"
-                        logger.warning(msg)
+                    # wire dataset names to task inputs
+                    task.inputs = [x[0].name for x in schemas]
+                    logger.info(f"found input schemas: {task.inputs}")
+                    all_schemas.extend(schemas)
+
+            schemas = self.fetch_output_schemas(task_event, node_event.event)
+            if schemas:
+                # wire dataset names to task outputs
+                task.outputs = [x[0].name for x in schemas]
+                logger.info(f"found schemas: {task.outputs}")
+                next_index = i + 1
+                if task.outputs and next_index <= number_of_tasks:
+                    tasks[next_index][0].inputs = task.outputs
+                all_schemas.extend(schemas)
 
         name = task_id.name.rpartition(".")[0]
         _id = tasks[0][0].id.split("-")[0]
@@ -355,22 +292,31 @@ class Workflow(object):
             name=name, id=_id, owners=[], tags=[], tasks=[x[0] for x in tasks]
         )
         logger.debug(f"pipeline: {pipeline}")
-        return pipeline
+        return pipeline, all_schemas
 
-    def emit_dataset(self, schema_info):
-        dataset_schema, source_schema = schema_info
-        target = self.target
-        schema_converter = target.make_schema_converter()
-        datahub_schema = schema_converter.convert(source_schema)
+    def ingest(self, events):
+        pipeline, schemas = self.create_pipeline(events)
+        logger.debug(
+            f"pipeline '{pipeline.name}:{pipeline.id}'  has '{pipeline.number_of_tasks()}' tasks: {pipeline.task_names()} with schemas={ list([x[0].name for x in schemas]) }"
+        )
         if self.emit:
-            logger.info(f"emitting dataset {dataset_schema.name}")
-            target.emit_dataset(datahub_schema, dataset_schema)
-            logger.info("emitted dataset")
-
-    def emit_pipeline(self, events: typing.List):
-        pipeline = self.create_pipeline(events)
-        if self.emit:
-            self.target.emit_pipeline(pipeline)
+            for target in self.targets:
+                for schema_info in schemas:
+                    dataset_schema, source_schema = schema_info
+                    try:
+                        # emit dataset as its own entity
+                        schema_converter = target.make_schema_converter()
+                        target_schema = schema_converter.convert(source_schema)
+                        logger.info(f"emitting dataset {dataset_schema.name}")
+                        target.emit_dataset(target_schema, dataset_schema)
+                        logger.info("emitted dataset")
+                    except Exception as e:
+                        msg = f"Unable to emit data set '{schema_info[0].name}', error={e}, traceback={error_traceback()}"
+                        logger.warning(msg)
+            if not self.datasets_only:
+                for target in self.targets:
+                    logger.info(f"emit_pipeline to target '{type(target)}'")
+                    target.emit_pipeline(pipeline)
 
 
 def event_comparison_key(event_request: EVENT_TYPES):
@@ -458,13 +404,13 @@ class EventProcesser(object):
             # current policy is to only capture workflows when all tasks have been executed
             # this excludes any workflows with tasks outputs retrieved from the cache
             # these don't run the task so there is no corresponding task event for the node
-            completed = len(Workflow.get_successful_task_events(events)) == len(
-                Workflow.get_successful_node_events(events).keys()
+            completed = len(WorkflowEvents.get_successful_task_events(events)) == len(
+                WorkflowEvents.get_successful_node_events(events).keys()
             )
         return completed
 
     @retry(delay=1, tries=10, backoff=1.2, logger=logging)
-    def start(self, workflow: Workflow):
+    def start(self, workflow):
         while True:
             message, handle = self.sqs_source.read()
             if not self.is_a_flyte_event(message):
@@ -477,14 +423,14 @@ class EventProcesser(object):
                 if self.is_successful_new_workflow(self._db[workflow_id]):
                     # events might not arrive in order
                     events = sorted(self._db.pop(workflow_id), key=event_comparison_key)
-                    logger.info(f"processing {len(events)} events for workflow {workflow_id}")
+                    logger.info(
+                        f"processing {len(events)} events for workflow {workflow_id}"
+                    )
                     # events shoube be >= 8 as 8 events are produced per task
                     if len(events) > 7:
                         logger.info(f"emit_pipeline for workflow: {workflow_id}")
-                        workflow.emit_pipeline(events)
-                        logger.info(
-                            f"workflow '{workflow_id}' emitted to target lineage system"
-                        )
+                        workflow.ingest(events)
+                        logger.info(f"workflow '{workflow_id}' ingestion finished")
             except Exception as e:
                 msg = f"error: exception={e}, traceback={error_traceback()}"
                 logger.error(msg)

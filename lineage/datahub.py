@@ -77,6 +77,7 @@ class DataHubSchemaConverter(SchemaConverter):
     _field_type_mapping: typing.Dict[str, T] = {
         # scalars
         "None": NullTypeClass,
+        "null": NullTypeClass,
         "bool": BooleanTypeClass,
         "int8": NumberTypeClass,
         "int16": NumberTypeClass,
@@ -105,6 +106,16 @@ class DataHubSchemaConverter(SchemaConverter):
         "binary": BytesTypeClass,
     }
 
+    def get_complex_type(self, source_field):
+        source_type = str(source_field.type)
+        target_class_type = None
+        if source_type.startswith("list"):
+            target_class_type = ArrayTypeClass
+        elif source_type.startswith("dictionary"):
+            target_class_type = MapTypeClass
+        # TODO: support other complex types (struct etc)
+        return target_class_type
+
     def convert(self, source_schema: pa.Schema) -> typing.List:
         """Convert source schema represented by pyarrow schema to DataHub. Error if any
         field fails conversion.
@@ -113,9 +124,12 @@ class DataHubSchemaConverter(SchemaConverter):
         schema = []
         for source_field in source_schema:
             source_type = str(source_field.type)
-            datahub_type_cls = self._field_type_mapping.get(source_type)
+            if source_type.startswith("list") or source_type.startswith("dictionary"):
+                datahub_type_cls = self.get_complex_type(source_field)
+            else:
+                datahub_type_cls = self._field_type_mapping.get(source_type)
             if not datahub_type_cls:
-                err_msg = f"Unable to map source pyarrow schema field '{source_field}' to DataHub"
+                err_msg = f"Unable to convert source pyarrow schema field '{source_field}' to DataHub"
                 logger.warning(err_msg)
                 # its all or nothing
                 raise ValueError(err_msg)
@@ -163,9 +177,7 @@ class DataHubTarget(TargetSystem):
         platform = self.platform
         env = self.env
         logger.info(f"creating dataset snapshot: {dataset_schema.name}")
-        logger.debug(
-            f"dataset: {dataset_schema}, datahub: {schema}"
-        )
+        logger.debug(f"dataset: {dataset_schema}, datahub: {schema}")
         dataset_urn = mce_builder.make_dataset_urn(platform, dataset_schema.name, env)
         dataset_snapshot = DatasetSnapshot(
             urn=dataset_urn,

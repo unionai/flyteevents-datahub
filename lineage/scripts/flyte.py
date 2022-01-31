@@ -11,10 +11,8 @@ from lineage import error_traceback
 from lineage.scripts import get_default_config, asbool
 from lineage.flyte_events import (
     EventProcesser,
-    Workflow,
+    WorkflowEvents,
     SQSSource,
-    AWSRefreshableRoleCredentials,
-    AWSRefreshableFileCredentials,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,8 +30,9 @@ def lineage_cmd():
     parser.add_argument(
         "--sqs_queue",
         dest="sqs_queue",
+        required=True,
         default="103020-flyte-events",
-        help="SQS queue name or url, default=103020-flyte-events",
+        help="SQS queue name or url",
     )
     parser.add_argument(
         "--aws_region",
@@ -56,6 +55,13 @@ def lineage_cmd():
         help="Emit lineage to DataHub, default=True",
     )
 
+    parser.add_argument(
+        "--datasets-only",
+        dest="datasets_only",
+        default=False,
+        help="Process datasets only not pipeline task lineage, default=False",
+    )
+
     args = parser.parse_args()
     config = args.config or get_default_config()
     try:
@@ -65,23 +71,16 @@ def lineage_cmd():
         sys.exit(-1)
 
     emit = asbool(args.emit)
+    datasets_only = asbool(args.datasets_only)
     try:
-        web_token_file_path = os.getenv("AWS_WEB_IDENTITY_TOKEN_FILE", None)
-        if web_token_file_path:
-            refreshable_creds = AWSRefreshableRoleCredentials(
-                web_token_file_path=web_token_file_path
-            )
-        else:
-            logger.info("running locally using AWSRefreshableFileCredentials")
-            refreshable_creds = AWSRefreshableFileCredentials(profile_name="adfs")
         event_processer = EventProcesser(
-            sqs_source=SQSSource(
-                name=args.sqs_queue,
-                region_name=args.aws_region,
-                session=refreshable_creds.setup_aws_session(),
-            )
+            sqs_source=SQSSource(name=args.sqs_queue, region_name=args.aws_region)
         )
-        workflow = Workflow(target=DataHubTarget(server=args.datahub_server), emit=emit)
+        workflow = WorkflowEvents(
+            targets=[DataHubTarget(server=args.datahub_server)],
+            emit=emit,
+            datasets_only=datasets_only,
+        )
         event_processer.start(workflow=workflow)
     except Exception as e:
         msg = f"error: exception={e}, traceback={error_traceback()}"

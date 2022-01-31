@@ -87,13 +87,14 @@ def test_make_dataset_snaphot():
             "B": pd.Timestamp("20130102"),
             "C": pd.Series(1, index=list(range(4)), dtype="float32"),
             "D": np.array([3] * 4, dtype="int32"),
-            # "E": pd.Categorical(["test", "train", "test", "train"]),
+            "E": pd.Categorical(["test", "train", "test", "train"]),
             "F": "foo",
         }
     )
     from lineage.utils import infer_schema
 
     schema, source_schema = infer_schema(df, "foo")
+    assert schema.shape == (4, 7)
     schema_converter = target.make_schema_converter()
     datahub_schema = schema_converter.convert(source_schema)
     dataset_snapshot = target.make_dataset_snapshot(datahub_schema, schema)
