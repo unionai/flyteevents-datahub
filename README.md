@@ -1,33 +1,36 @@
-# lineage
+# Flyte Data Lineage
 
-Data lineage Python library
+[![version](https://img.shields.io/badge/version-0.0.2-yellow.svg)](https://semver.org)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+Flyte Data Lineage Python Application and Library
 
 Initial support for Flyte -> (DataHub, AWS Glue Catalog)
 
-## Lineage
+## Introduction
 
 Data lineage is extracted from Flyte by consuming events sent from FlyetAdmin during a workflow run. A workflow is ingested into one or more target systems.
-Supported targets include [DataHub](https://datahubproject.io/) and the [AWS Glue Catalog](https://docs.aws.amazon.com/glue/latest/dg/aws-glue-api-catalog.html). 
+Supported targets include [DataHub](https://datahubproject.io/) and the [AWS Glue Catalog](https://docs.aws.amazon.com/glue/latest/dg/aws-glue-api-catalog.html). Both targets currently overrwrite any previous versions.
 
 
 ### DataHub
 
 The data model consists of entities: Datasets, Pipelines & Tasks 
 
-Entites contain one or more aspects: Tags, Owners, etc
+Entities contain one or more aspects: Tags, Owners, etc
 
 For example a pipeline can consist of many directed tasks with associated input and output datasets. The DataHub ingestion does not need to be captured in one pass by providing a complete pipeline data model as input. Individual entities can be ingested separately and wired together later by linking the entity ids (urns) together. Entity aspects can also be added as and when they become known in the system. This reflects reality where by an ingestion point only has local information such as the current workflow or task being processed and enables cross system dependencies to be wired together. 
 
 ### AWS Glue Catalog
 
-Datasets are ingested into the Glue Catalog. A table is created for the dataset and optional database created to contain the table.
+Datasets are ingested into the Glue Catalog. A table is created for the dataset and optionally a database created to contain the table.
 
 
 ## Flight lineage server 
 
 Flyte publishes SNS topics to an SQS queue for different workflow lifecycle events.
-The events of interest for a workflow are grouped and processed to produce data lineage. The lineage includes the chain of workflow tasks and any cdatasets used within the flow. Only successfully run workflows are captured and datasets that are not fetched from the flyte cache.
-The lineage is the ingested by the configured targets.
+The events of interest for a workflow are grouped and processed to produce data lineage. The lineage includes the chain of workflow tasks and any datasets used within the flow. Only successfully run workflows are captured and datasets that are not fetched from the flyte cache.
+The lineage is then ingested by the configured targets.
 
 [traitlets](https://traitlets.readthedocs.io/en/stable/index.html) from Jupyter is used for the application configuration which can be configured within classes, as cmd line args or in a python config file (./flytelineage_config.py).
 
@@ -51,20 +54,10 @@ The lineage is the ingested by the configured targets.
     --EventProcessor.log_level=<Enum>                                                                              
         Set the log level by value or name.                                                                        
         Choices: any of [0, 10, 20, 30, 40, 50, 'DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL']                      
-        Default: 30                                                                                                
-    --EventProcessor.show_config=<Bool>                                                                            
-        Instead of starting the Application, dump configuration to stdout                                          
-        Default: False                                                                                             
-    --EventProcessor.show_config_json=<Bool>                                                                       
-        Instead of starting the Application, dump configuration to stdout (as JSON)                                
-        Default: False                                                                                             
+        Default: 30                                                                                                                                                                               
     --EventProcessor.sqs_queue=<Unicode>                                                                           
         sqs queue name or url                                                                                      
-        Default: ''                                                                                                
-
-
-
-                                                                                 
+        Default: ''                                                                                                                                                                 
 
 ## Dataset lineage script
 
@@ -110,7 +103,7 @@ A script is available to ingest datasets into DataHub. The currently supported f
 Fork the project from https://github.com/unionai/flyteevents-datahub
 
 
-Keep your fork by tracking the original "upstream" repo that you forked
+Keep your fork up to date by tracking the original "upstream" repo that you forked
 
     $ git remote add upstream https://github.com/unionai/flyteevents-datahub.git
     $ git remote -v
@@ -136,7 +129,7 @@ Whenever you want to update your fork with the latest upstream changes, you'll n
 
 Doing Your Work - Create a Branch  
 
-### commiting
+### Commiting
 
 As this is a public repo you need need to generate a token from your github account and use that for the password. 
 
@@ -144,6 +137,9 @@ Remember to change to your personal user info
 
     $ git config user.name "joe"
     $ git config user.email "joe@lovely.com"
+
+Create a PR against the upstream repo
+
 
 
 
@@ -165,6 +161,4 @@ Remember to change to your personal user info
 ##  Style
 
     $ black .
-
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
