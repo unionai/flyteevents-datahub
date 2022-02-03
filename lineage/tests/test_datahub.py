@@ -95,7 +95,7 @@ def test_make_dataset_snaphot():
 
     schema, source_schema = infer_schema(df, "foo")
     assert schema.shape == (4, 7)
-    schema_converter = target.make_schema_converter()
+    schema_converter = make_converter()
     datahub_schema = schema_converter.convert(source_schema)
     dataset_snapshot = target.make_dataset_snapshot(datahub_schema, schema)
     from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent

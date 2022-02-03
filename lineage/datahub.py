@@ -4,6 +4,7 @@ import pandas as pd
 import pyarrow as pa
 from .dataset import DatasetSchema
 from .interface import TargetSystem, SchemaConverter, Pipeline, Task
+from lineage import error_traceback
 from datahub.metadata.com.linkedin.pegasus2avro.metadata.snapshot import DatasetSnapshot
 from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent
 from datahub.emitter.rest_emitter import DatahubRestEmitter
@@ -153,6 +154,7 @@ class DataHubTarget(TargetSystem):
         server: str,
         platform: str = "flyte",
         env: str = "DEV",
+        datasets_only=False,
         token=None,
         connect_timeout=None,
         read_timeout=None,
@@ -170,6 +172,25 @@ class DataHubTarget(TargetSystem):
             self.emitter.test_connection()
         self.env = env
         self.platform = platform
+        self.datasets_only = datasets_only
+
+    def ingest(self, pipeline, datasets):
+        logger.info(f"DataHub ingestion for {pipeline.name}")
+        for dataset_info in datasets:
+            dataset_schema, source_schema, _ = dataset_info
+            try:
+                # emit dataset as its own entity
+                schema_converter = DataHubSchemaConverter()
+                target_schema = schema_converter.convert(source_schema)
+                logger.info(f"emitting dataset {dataset_schema.name}")
+                self.emit_dataset(target_schema, dataset_schema)
+                logger.info("emitted dataset")
+            except Exception as e:
+                msg = f"Unable to ungest data set '{dataset_schema.name}', error={e}, traceback={error_traceback()}"
+                logger.warning(msg)
+        if not self.datasets_only:
+            logger.info(f"emit pipeline: {pipeline.name}")
+            self.emit_pipeline(pipeline)
 
     def make_dataset_snapshot(
         self, schema: typing.List[SchemaField], dataset_schema: DatasetSchema
@@ -223,7 +244,10 @@ class DataHubTarget(TargetSystem):
         self.emitter.emit_mce(mce)
 
     def emit_dataset(
-        self, schema: typing.List[SchemaField], dataset_schema: DatasetSchema
+        self,
+        schema: typing.List[SchemaField],
+        dataset_schema: DatasetSchema,
+        dataset: pd.DataFrame = None,
     ):
         dataset_snapshot = self.make_dataset_snapshot(schema, dataset_schema)
         mce = MetadataChangeEvent(proposedSnapshot=dataset_snapshot)
@@ -310,6 +334,3 @@ class DataHubTarget(TargetSystem):
         mces = self.build_mce_pipeline(pipeline)
         for mce in mces:
             self.emit_mce(mce)
-
-    def make_schema_converter(self) -> SchemaConverter:
-        return DataHubSchemaConverter()

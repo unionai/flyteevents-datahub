@@ -2,7 +2,17 @@ from abc import ABC, abstractmethod
 import typing
 import pyarrow as pa
 from pydantic import BaseModel
-from .dataset import DatasetSchema
+from .dataset import DatasetSchema, pd
+
+
+class SchemaConverter(ABC):
+    """SchemaConverter
+    Interface to convert from source to target schema
+    """
+
+    @abstractmethod
+    def convert(self, source_schema: pa.Schema) -> typing.List[typing.Any]:
+        pass
 
 
 class Task(BaseModel):
@@ -35,39 +45,9 @@ class Pipeline(BaseModel):
         return list([x.name for x in self.tasks])
 
 
-class SchemaConverter(ABC):
-    """SchemaConverter
-
-    Interface to convert from source to target schema
-    """
-
-    @abstractmethod
-    def convert(self, source_schema: pa.Schema) -> typing.Any:
-        pass
-
-
 class TargetSystem(ABC):
-    """TargetSystem
-
-    TargetSystem Interface responsible for providing a ``SchemaConverter`` and
-    ingesting a dataset schemas, tasks & pipelines to the target.
-    """
+    """TargetSystem"""
 
     @abstractmethod
-    def make_schema_converter(self) -> SchemaConverter:
-        pass
-
-    @abstractmethod
-    def emit_dataset(self, schema: typing.Any, dataset_schema: DatasetSchema):
-        pass
-
-    @abstractmethod
-    def emit_task(self, pipeline: Pipeline, task: Task):
-        pass
-
-    @abstractmethod
-    def emit_pipeline(
-        self,
-        pipeline: Pipeline,
-    ):
+    def ingest(self, pipeline, datasets):
         pass

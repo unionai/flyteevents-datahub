@@ -6,3 +6,5 @@ acryl-datahub
 pandas
 pyarrow
 numpy
+traitlets
+awswrangler

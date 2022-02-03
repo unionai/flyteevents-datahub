@@ -32,7 +32,7 @@ setup(
     zip_safe=False,
     entry_points="""\
       [console_scripts]
-      dataset_lineage = lineage.scripts.dataset:dataset_cmd
-      flyte_lineage = lineage.scripts.flyte:lineage_cmd
+      datasetlineage = lineage.scripts.dataset:dataset_cmd
+      flytelineage = lineage.scripts.flyte:lineage_cmd
       """,
 )

@@ -6,10 +6,29 @@ import json
 from datetime import datetime, timezone
 import configparser
 import os
+from traitlets import (
+    Unicode,
+    Integer,
+    Dict,
+    TraitError,
+    List,
+    Bool,
+    Any,
+    Tuple,
+    Type,
+    Set,
+    Instance,
+    Bytes,
+    Float,
+    observe,
+    default,
+)
+from traitlets.config import Application, SingletonConfigurable, catch_config_error
 
 
 from .interface import TargetSystem, Pipeline, Task
 from lineage import error_traceback
+from lineage import __version__ as lineage_version
 from .dataset import DatasetSchema
 from .utils import infer_schema
 from flyteidl.admin import event_pb2 as admin_event_pb2
@@ -25,8 +44,8 @@ import boto3
 from botocore.session import get_session, Session
 from retry import retry
 
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 # TODO: reference the protobuf values directly
 NodeAndTaskExecutionPhaseSucceeded = 3
@@ -43,9 +62,11 @@ EVENT_TYPES = typing.Union[
 ]
 
 
-class SQSSource(object):
+class SQSSource(Application):
     def __init__(self, name: str, region_name="us-east-1", session=None):
         self._name = name
+        print(f"sqs name={name}")
+        # self.log(f"sqs name={name}")
         session = session or get_session()
         self._sqs = session.create_client("sqs", region_name=region_name)
         if "amazonaws.com" in name:
@@ -77,11 +98,25 @@ class SQSSource(object):
         logger.debug(f"Received and deleted message: {receipt_handle}")
 
 
-class WorkflowEvents(object):
-    def __init__(self, targets, emit=True, datasets_only=False):
-        self.targets = targets
-        self.emit = emit
-        self.datasets_only = datasets_only
+class WorkflowEvents(SingletonConfigurable):
+
+    emit = Bool(True, help="Emit lineage to target systems").tag(config=True)
+
+    datasets_only = Bool(False, help="Only emit dataset lineage to target systems").tag(
+        config=True
+    )
+
+    targets = List(
+        Instance(TargetSystem),
+        help="""List of lineage target instances.
+
+        For instance::
+
+            targets = [
+               DataHubTarget()
+            ]
+        """,
+    ).tag(config=True)
 
     def get_literal_map_from_uri(
         self, remote_path: str
@@ -145,7 +180,7 @@ class WorkflowEvents(object):
                         created=created,
                         metadata=metadata,
                     )
-                    schemas.append((schema, source_schema))
+                    schemas.append((schema, source_schema, dataset))
         return schemas
 
     def get_task_version(self, task_event):
@@ -301,32 +336,62 @@ class WorkflowEvents(object):
         )
         if self.emit:
             for target in self.targets:
-                for schema_info in schemas:
-                    dataset_schema, source_schema = schema_info
-                    try:
-                        # emit dataset as its own entity
-                        schema_converter = target.make_schema_converter()
-                        target_schema = schema_converter.convert(source_schema)
-                        logger.info(f"emitting dataset {dataset_schema.name}")
-                        target.emit_dataset(target_schema, dataset_schema)
-                        logger.info("emitted dataset")
-                    except Exception as e:
-                        msg = f"Unable to emit data set '{schema_info[0].name}', error={e}, traceback={error_traceback()}"
-                        logger.warning(msg)
-            if not self.datasets_only:
-                for target in self.targets:
-                    logger.info(f"emit_pipeline to target '{type(target)}'")
-                    target.emit_pipeline(pipeline)
+                try:
+                    target.ingest(pipeline, schemas)
+                except Exception as e:
+                    msg = f"Unable to ingest pipeline '{pipeline.name}' with target '{target}', error={e}, traceback={error_traceback()}"
+                    logger.warning(msg)
 
 
 def event_comparison_key(event_request: EVENT_TYPES):
     return event_request.event.occurred_at.ToNanoseconds()
 
 
-class EventProcesser(object):
-    def __init__(self, sqs_source: SQSSource):
-        self.sqs_source = sqs_source
+class FlyteLineage(Application):
+
+    name = "flytelineage"
+    version = lineage_version
+    description = """Flyte data lineage"""
+
+    config_file = Unicode("flytelineage_config.py", help="The config file to load").tag(
+        config=True
+    )
+
+    @default("log_level")
+    def _log_level_default(self):
+        return logging.INFO
+
+    sqs_queue = Unicode(
+        help="sqs queue name or url",
+    ).tag(config=True)
+
+    aws_region = Unicode(
+        "us-east-1",
+        help="aws region",
+    ).tag(config=True)
+
+    sqs_source = Instance(SQSSource)
+
+    @default("sqs_source")
+    def _sqs_source_default(self):
+        return SQSSource(name=self.sqs_queue, region_name=self.aws_region)
+
+    @catch_config_error
+    def initialize(self, *args, **kwargs):
+        super().initialize(*args, **kwargs)
+        self.load_config_file(self.config_file)
+        cfg = self.config
+        self.init_logging()
+        self.log.info(f"Initialized with {cfg}")
         self._db = {}
+
+    def init_logging(self):
+        # disable botocore debug
+        logging.getLogger("botocore").setLevel(max(self.log_level, logging.INFO))
+        logger = logging.getLogger()
+        logger.propagate = True
+        logger.parent = self.log
+        logger.setLevel(self.log_level)
 
     def is_a_flyte_event(self, message: str) -> bool:
         return message is not None

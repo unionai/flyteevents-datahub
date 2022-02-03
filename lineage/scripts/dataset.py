@@ -8,8 +8,7 @@ from pyarrow import csv, json, parquet
 from lineage.interface import (
     TargetSystem,
 )
-from lineage.datahub import DataHubTarget
-from lineage.datahub import DatasetSchema
+from lineage.datahub import DatasetSchema, DataHubSchemaConverter, DataHubTarget
 from lineage.utils import infer_schema
 from lineage import error_traceback
 from . import (
@@ -101,7 +100,7 @@ def dataset_cmd():
         dataset_schema, source_schema = infer_schema(
             df, name, description=args.description, owners=owners, tags=tags
         )
-        schema_converter = target.make_schema_converter()
+        schema_converter = DataHubSchemaConverter()
         datahub_schema = schema_converter.convert(source_schema)
         target.emit_dataset(datahub_schema, dataset_schema)
     except Exception as e:
