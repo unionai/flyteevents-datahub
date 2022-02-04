@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 import configparser
 import os
+from concurrent.futures import ThreadPoolExecutor
 from traitlets import (
     Unicode,
     Integer,
@@ -118,6 +119,16 @@ class WorkflowEvents(SingletonConfigurable):
         """,
     ).tag(config=True)
 
+    @default("config")
+    def _config_default(self):
+        # load application config by default
+        from .flyte import FlyteLineage
+
+        if FlyteLineage.initialized():
+            return FlyteLineage.instance().config
+        else:
+            return Config()
+
     def get_literal_map_from_uri(
         self, remote_path: str
     ) -> typing.Optional[literals.LiteralMap]:
@@ -152,7 +163,7 @@ class WorkflowEvents(SingletonConfigurable):
                     parquet_file = r"/00000"
                     files = fs.local_path + parquet_file
                     df = reader._read(files)
-                    logger.info(f"read dataset rows={len(df)}")
+                    self.log.info(f"read dataset rows={len(df)}")
                     datasets.append((df, v.scalar.schema.uri + parquet_file))
                 # TODO: handle v.scalar.blob
         return datasets
@@ -330,17 +341,22 @@ class WorkflowEvents(SingletonConfigurable):
         return pipeline, all_schemas
 
     def ingest(self, events):
-        pipeline, schemas = self.create_pipeline(events)
-        logger.debug(
-            f"pipeline '{pipeline.name}:{pipeline.id}'  has '{pipeline.number_of_tasks()}' tasks: {pipeline.task_names()} with schemas={ list([x[0].name for x in schemas]) }"
-        )
-        if self.emit:
-            for target in self.targets:
-                try:
-                    target.ingest(pipeline, schemas)
-                except Exception as e:
-                    msg = f"Unable to ingest pipeline '{pipeline.name}' with target '{target}', error={e}, traceback={error_traceback()}"
-                    logger.warning(msg)
+        try:
+            logger.info(f"ingest")
+            pipeline, schemas = self.create_pipeline(events)
+            logger.debug(
+                f"pipeline '{pipeline.name}:{pipeline.id}'  has '{pipeline.number_of_tasks()}' tasks: {pipeline.task_names()} with schemas={ list([x[0].name for x in schemas]) }"
+            )
+            if self.emit:
+                for target in self.targets:
+                    try:
+                        target.ingest(pipeline, schemas)
+                    except Exception as e:
+                        msg = f"Unable to ingest pipeline '{pipeline.name}' with target '{target}', error={e}, traceback={error_traceback()}"
+                        logger.warning(msg)
+        except Exception as e:
+            msg = f"Unable to ingest pipeline, error={e}, traceback={error_traceback()}"
+            logger.warning(msg)
 
 
 def event_comparison_key(event_request: EVENT_TYPES):
@@ -376,14 +392,21 @@ class FlyteLineage(Application):
     def _sqs_source_default(self):
         return SQSSource(name=self.sqs_queue, region_name=self.aws_region)
 
+    executor = Any()
+
+    def _executor_default(self):
+        return ThreadPoolExecutor(thread_name_prefix="workflow")
+
+    _db = Dict({})
+
     @catch_config_error
     def initialize(self, *args, **kwargs):
         super().initialize(*args, **kwargs)
         self.load_config_file(self.config_file)
-        cfg = self.config
         self.init_logging()
-        self.log.info(f"Initialized with {cfg}")
-        self._db = {}
+        self.log.info(f"Initialized with {self.config}")
+        if not self.config.WorkflowEvents.emit:
+            logger.warning("Workflow event ingestion is disabled!")
 
     def init_logging(self):
         # disable botocore debug
@@ -405,7 +428,7 @@ class FlyteLineage(Application):
         data = base64.b64decode(encoded_pb)
 
         subj = message_obj["Subject"]
-        logger.debug(f"Transforming message, subject {subj}...")
+        self.log.debug(f"Transforming message, subject {subj}...")
         pb_obj = None
 
         if subj == "flyteidl.admin.TaskExecutionEventRequest":
@@ -438,7 +461,7 @@ class FlyteLineage(Application):
     def add_event(self, event_request: EVENT_TYPES):
         workflow_id = self.get_workflow_id(event_request)
         if workflow_id not in self._db:
-            logger.info(f"receiving events for workflow: {workflow_id}")
+            self.log.info(f"receiving events for workflow: {workflow_id}")
             self._db[workflow_id] = []
         self._db[workflow_id].append(event_request)
         return workflow_id
@@ -494,8 +517,12 @@ class FlyteLineage(Application):
                     # events shoube be >= 8 as 8 events are produced per task
                     if len(events) > 7:
                         logger.info(f"emit_pipeline for workflow: {workflow_id}")
-                        workflow.ingest(events)
-                        logger.info(f"workflow '{workflow_id}' ingestion finished")
+                        future = self.executor.submit(workflow.ingest, events)
+
+                        def finished(result):
+                            logger.info(f"workflow '{workflow_id}' ingestion finished")
+
+                        future.add_done_callback(finished)
             except Exception as e:
                 msg = f"error: exception={e}, traceback={error_traceback()}"
                 logger.error(msg)

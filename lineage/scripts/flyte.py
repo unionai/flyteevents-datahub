@@ -17,9 +17,7 @@ def lineage_cmd(argv=None):
     try:
         flytelineage = FlyteLineage.instance()
         flytelineage.initialize(argv)
-        workflow = WorkflowEvents.instance()
-        workflow.update_config(flytelineage.config)
-        flytelineage.start(workflow=workflow)
+        flytelineage.start(workflow=WorkflowEvents())
     except Exception as e:
         msg = f"error: exception={e}, traceback={error_traceback()}"
         logger.error(msg)

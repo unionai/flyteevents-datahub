@@ -40,7 +40,7 @@ class GlueCatalogTarget(TargetSystem):
             # parameters=param,
             # columns_comments=comments
         )
-        logger.info(f"result: {result}")
+        logger.info(f"s3 write returned: {result}")
 
     def ingest(self, pipeline, datasets):
         # use the configured db name if set otherwise use pipeline data
