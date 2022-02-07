@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 import configparser
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from traitlets import (
     Unicode,
@@ -63,11 +64,9 @@ EVENT_TYPES = typing.Union[
 ]
 
 
-class SQSSource(Application):
+class SQSSource(object):
     def __init__(self, name: str, region_name="us-east-1", session=None):
         self._name = name
-        print(f"sqs name={name}")
-        # self.log(f"sqs name={name}")
         session = session or get_session()
         self._sqs = session.create_client("sqs", region_name=region_name)
         if "amazonaws.com" in name:
@@ -95,8 +94,13 @@ class SQSSource(Application):
         return None, None
 
     def complete(self, receipt_handle):
-        self._sqs.delete_message(QueueUrl=self._queue_url, ReceiptHandle=receipt_handle)
-        logger.debug(f"Received and deleted message: {receipt_handle}")
+        result = self._sqs.delete_message(
+            QueueUrl=self._queue_url, ReceiptHandle=receipt_handle
+        )
+        logger.debug(
+            f"Deleted message, http status: {result['ResponseMetadata']['HTTPStatusCode']}"
+        )
+        return result
 
 
 class WorkflowEvents(SingletonConfigurable):
@@ -181,8 +185,7 @@ class WorkflowEvents(SingletonConfigurable):
                     dataset, uri = dataset_info
                     # What about the dataset name?
                     # using task_id.name + + o{arg_number} e.g. "news.workflows.covid.get.o1"
-                    # TODO: if name exists in the metadata, use that. Will need to preserve
-                    # metadata across io pandas -> parquet -> pandas
+                    # would be nice if a name exists in the metadata to use that
                     metadata = dict(uri=uri)
                     schema, source_schema = infer_schema(
                         dataset,
@@ -498,7 +501,7 @@ class FlyteLineage(Application):
         return completed
 
     @retry(delay=1, tries=10, backoff=1.2, logger=logging)
-    def start(self, workflow):
+    def process_events(self, workflow):
         while True:
             message, handle = self.sqs_source.read()
             if not self.is_a_flyte_event(message):
@@ -528,3 +531,20 @@ class FlyteLineage(Application):
                 logger.error(msg)
             finally:
                 self.sqs_source.complete(handle)
+
+    @classmethod
+    def launch_instance(cls, argv=None):
+        try:
+            self = cls.instance()
+            self.initialize(argv)
+            self.process_events(workflow=WorkflowEvents())
+        except Exception as e:
+            msg = f"error: exception={e}, traceback={error_traceback()}"
+            logger.error(msg)
+            sys.exit(-1)
+
+
+main = FlyteLineage.launch_instance
+
+if __name__ == "__main__":
+    main()

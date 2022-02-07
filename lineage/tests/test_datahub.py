@@ -1,7 +1,18 @@
+import pytest
+
+
 def make_converter():
     from lineage.datahub import DataHubSchemaConverter
 
     return DataHubSchemaConverter()
+
+
+def make_target(**kwargs):
+    from lineage.datahub import DataHubTarget
+
+    return DataHubTarget(
+        server="https://a.com", test_connection=False, just_testing=True, **kwargs
+    )
 
 
 def test_convert():
@@ -36,10 +47,35 @@ def test_convert():
     assert len(result) == len(fields)
 
 
-def make_target(**kwargs):
-    from lineage.datahub import DataHubTarget
+def test_convert_error():
+    import pyarrow as pa
 
-    return DataHubTarget(server="https://a.com", test_connection=False, **kwargs)
+    fields = [pa.field("bool", pa.bool_())]
+    s = pa.schema(fields)
+    converter = make_converter()
+    converter._field_type_mapping = {}
+    with pytest.raises(
+        ValueError,
+        match="Unable to convert source pyarrow schema field 'pyarrow.Field<bool: bool>' to DataHub",
+    ):
+        converter.convert(s)
+
+
+def test_audit_stamp():
+    from lineage.datahub import audit_stamp
+    from datetime import datetime
+
+    audit = audit_stamp(datetime(2022, 1, 1, 12, 0, 0), "flyte")
+    assert audit.time == 1641038400000
+    assert audit.actor == "urn:li:corpuser:flyte_executor"
+
+
+def test_tags():
+    from lineage.datahub import tags
+    from datahub.metadata.schema_classes import GlobalTagsClass
+
+    t = tags(["sunny", "day"])
+    assert isinstance(t, GlobalTagsClass)
 
 
 def test_make_pipeline_snaphot():
@@ -118,7 +154,7 @@ def test_make_task_snaphot():
         outputs=["world_population"],
         url="https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp",
     )
-    snapshot = target.make_task_snaphot(pipeline, task)
+    snapshot = target.make_task_snapshot(pipeline, task)
     assert (
         str(snapshot)
         == "DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.get)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.get', 'description': 'get', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid,DEV)'], 'outputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,world_population,DEV)'], 'inputDatajobs': None}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]})"
@@ -130,8 +166,8 @@ def test_make_task_snaphot():
     assert raw_mce_obj is not None
 
 
-def test_build_mce_pipeline():
-    target = make_target()
+@pytest.fixture()
+def pipeline():
     from lineage.interface import Pipeline, Task
 
     pipeline = Pipeline(
@@ -178,6 +214,12 @@ def test_build_mce_pipeline():
         url="https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp",
     )
     pipeline.tasks = [task1, task2, task3, task4]
+    return pipeline
+
+
+def test_build_mce_pipeline(pipeline):
+    target = make_target()
+
     mces = target.build_mce_pipeline(pipeline)
     assert len(mces) == 5
     assert (
@@ -200,3 +242,22 @@ def test_build_mce_pipeline():
         str(mces[4])
         == "MetadataChangeEventClass({'auditHeader': None, 'proposedSnapshot': DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.final)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.final', 'description': 'final', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': [], 'outputDatasets': [], 'inputDatajobs': ['urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.save)']}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]}), 'proposedDelta': None, 'systemMetadata': None})"
     )
+
+
+def test_ingest(pipeline):
+    target = make_target()
+    from lineage.dataset import DatasetSchema
+    import numpy as np
+    import pandas as pd
+
+    ds = DatasetSchema("bigdata")
+    a = np.array([[5, "hello", True], [2, "goodbye", False]])
+    df = pd.DataFrame(a)
+    schema = ds.infer(df)
+    dataset = (ds, schema, df)
+    target.ingest(pipeline, [dataset])
+
+
+def test_emit_task(pipeline):
+    target = make_target()
+    target.emit_task(pipeline, pipeline.tasks[0])

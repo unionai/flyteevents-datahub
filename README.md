@@ -57,36 +57,7 @@ The lineage is then ingested by the configured targets.
         Default: 30                                                                                                                                                                               
     --EventProcessor.sqs_queue=<Unicode>                                                                           
         sqs queue name or url                                                                                      
-        Default: ''                                                                                                                                                                 
-
-## Dataset lineage script
-
-A script is available to ingest datasets into DataHub. The currently supported file types include parquet, csv and json.
-
-    $ datasetlineage -h                                                                                                                                                 
-    usage: emit_dataset [-h] [-p PLATFORM] [-s SERVER] [-f FILEPATH] [--filetype FILETYPE] [-n NAME] [-d DESCRIPTION] [-o OWNERS] [-t TAGS] [-c FILE]                 
-                                                                                                                                                                    
-    Emit Source Dataset -> Datahub                                                                                                                                                   
-                                                                                                                                                                    
-    optional arguments:                                                                                                                                               
-    -h, --help            show this help message and exit                                                                                                           
-    -p PLATFORM, --platform PLATFORM                                                                                                                                
-                            Source platform, default=flyte                                                                                                            
-    -s SERVER, --server SERVER                                                                                                                                      
-                            Datahub server url, e.g. https://api.datahub.dev.aws.great.net                                                                      
-    -f FILEPATH, --filepath FILEPATH                                                                                                                                
-                            dataset filepath                                                                                                                          
-    --filetype FILETYPE   file type format, one of csv, json or parquet                                                                                             
-    -n NAME, --name NAME  dataset name                                                                                                                              
-    -d DESCRIPTION, --description DESCRIPTION                                                                                                                       
-                            dataset description                                                                                                                       
-    -o OWNERS, --owners OWNERS                                                                                                                                      
-                            comma separated list of owners e.g. joe,clair                                                                                             
-    -t TAGS, --tags TAGS  comma separated list of tags e.g. wonderful,beauty                                                                                        
-    -c FILE, --config FILE                                                                                                                                          
-                            Path to configuration file (defaults to $CWD/etc/dev.ini)                                                                                 
-                                                                                                                                                                                                                             
-
+        Default: ''                                                                                                                                                  
 ## Development
 
     $ git clone https://github.com/unionai/flyteevents-datahub.git

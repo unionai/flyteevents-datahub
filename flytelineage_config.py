@@ -15,7 +15,8 @@ c.FlyteLineage.log_format = (
 c.WorkflowEvents.datasets_only = False
 c.WorkflowEvents.targets = [
     DataHubTarget(
-        server="https://api.datahub.dev.aws.jpmchase.net", datasets_only=c.WorkflowEvents.datasets_only
+        server="https://api.datahub.dev.aws.wonderful.net",
+        datasets_only=c.WorkflowEvents.datasets_only,
     ),
     GlueCatalogTarget(
         bucket_path="app-id-103020-dep-id-103021-uu-id-5qqzivkh5yaj",

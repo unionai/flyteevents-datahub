@@ -160,6 +160,7 @@ class DataHubTarget(TargetSystem):
         read_timeout=None,
         extra_headers=None,
         test_connection=True,
+        just_testing=False,
     ):
         self.emitter = DatahubRestEmitter(
             server,
@@ -173,6 +174,7 @@ class DataHubTarget(TargetSystem):
         self.env = env
         self.platform = platform
         self.datasets_only = datasets_only
+        self.just_testing = just_testing
 
     def ingest(self, pipeline, datasets):
         logger.info(f"DataHub ingestion for {pipeline.name}")
@@ -186,7 +188,7 @@ class DataHubTarget(TargetSystem):
                 self.emit_dataset(target_schema, dataset_schema)
                 logger.info("emitted dataset")
             except Exception as e:
-                msg = f"Unable to ungest data set '{dataset_schema.name}', error={e}, traceback={error_traceback()}"
+                msg = f"Unable to ingest data set '{dataset_schema.name}', error={e}, traceback={error_traceback()}"
                 logger.warning(msg)
         if not self.datasets_only:
             logger.info(f"emit pipeline: {pipeline.name}")
@@ -241,7 +243,8 @@ class DataHubTarget(TargetSystem):
 
     def emit_mce(self, mce: MetadataChangeEvent):
         logger.debug(f"mce: {mce}")
-        self.emitter.emit_mce(mce)
+        if not self.just_testing:
+            self.emitter.emit_mce(mce)
 
     def emit_dataset(
         self,
@@ -253,7 +256,7 @@ class DataHubTarget(TargetSystem):
         mce = MetadataChangeEvent(proposedSnapshot=dataset_snapshot)
         self.emit_mce(mce)
 
-    def make_task_snaphot(self, pipeline: Pipeline, task: Task):
+    def make_task_snapshot(self, pipeline: Pipeline, task: Task):
         platform = self.platform
         env = self.env
         job_urn = mce_builder.make_data_job_urn(platform, pipeline.name, task.name, env)
@@ -322,12 +325,12 @@ class DataHubTarget(TargetSystem):
         )
         task_mces = []
         for task in pipeline.tasks:
-            task_snapshot = self.make_task_snaphot(pipeline, task)
+            task_snapshot = self.make_task_snapshot(pipeline, task)
             task_mces.append(MetadataChangeEvent(proposedSnapshot=task_snapshot))
         return [flow_mce] + task_mces
 
     def emit_task(self, pipeline: Pipeline, task: Task):
-        snapshot = make_task_snaphot(pipeline, task)
+        snapshot = self.make_task_snapshot(pipeline, task)
         self.emit_mce(MetadataChangeEvent(proposedSnapshot=snapshot))
 
     def emit_pipeline(self, pipeline: Pipeline):

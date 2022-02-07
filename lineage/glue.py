@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class GlueCatalogTarget(TargetSystem):
-    def __init__(self, bucket_path: str, kms_key_arn, db_name: str = None):
+    def __init__(self, bucket_path: str, kms_key_arn: str, db_name: str = None):
         self.db_name = db_name
         self.bucket_path = bucket_path
         self.kms_key_arn = kms_key_arn
@@ -36,11 +36,9 @@ class GlueCatalogTarget(TargetSystem):
             database=db_name,
             table=name,
             mode="overwrite",
-            # description=desc,
-            # parameters=param,
-            # columns_comments=comments
         )
         logger.info(f"s3 write returned: {result}")
+        return result
 
     def ingest(self, pipeline, datasets):
         # use the configured db name if set otherwise use pipeline data
@@ -50,10 +48,11 @@ class GlueCatalogTarget(TargetSystem):
             logger.info(f"creating glue db: {db_name}")
             wr.catalog.create_database(db_name)
             logger.info(f"created glue db: {db_name}")
-
+        result = []
         for dataset in datasets:
             try:
-                self.ingest_dataset(pipeline, dataset, db_name=db_name)
+                result.append(self.ingest_dataset(pipeline, dataset, db_name=db_name))
             except Exception as e:
                 msg = f"Unable to ingest data set '{dataset[0].name}', error={e}, traceback={error_traceback()}"
                 logger.warning(msg)
+        return result
