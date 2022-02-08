@@ -40,7 +40,11 @@ from flytekit.core.context_manager import FlyteContextManager
 from flytekit.core.type_engine import TypeEngine
 from flytekit.models import literals
 from flytekit.types.schema.types import FlyteSchema
-from flytekit.common.exceptions.user import FlyteAssertion
+try:
+    from flytekit.exceptions.user import FlyteAssertion
+except ImportError: 
+    # older version   
+    from flytekit.common.exceptions.user import FlyteAssertion
 from google.protobuf.timestamp_pb2 import Timestamp
 import boto3
 from botocore.session import get_session, Session
