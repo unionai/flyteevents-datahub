@@ -2,13 +2,13 @@ import pytest
 
 
 def make_converter():
-    from lineage.datahub import DataHubSchemaConverter
+    from flytelineage.datahub import DataHubSchemaConverter
 
     return DataHubSchemaConverter()
 
 
 def make_target(**kwargs):
-    from lineage.datahub import DataHubTarget
+    from flytelineage.datahub import DataHubTarget
 
     return DataHubTarget(
         server="https://a.com", test_connection=False, just_testing=True, **kwargs
@@ -62,7 +62,7 @@ def test_convert_error():
 
 
 def test_audit_stamp():
-    from lineage.datahub import audit_stamp
+    from flytelineage.datahub import audit_stamp
     from datetime import datetime
 
     audit = audit_stamp(datetime(2022, 1, 1, 12, 0, 0), "flyte")
@@ -71,7 +71,7 @@ def test_audit_stamp():
 
 
 def test_tags():
-    from lineage.datahub import tags
+    from flytelineage.datahub import tags
     from datahub.metadata.schema_classes import GlobalTagsClass
 
     t = tags(["sunny", "day"])
@@ -80,7 +80,7 @@ def test_tags():
 
 def test_make_pipeline_snaphot():
     target = make_target()
-    from lineage.interface import Pipeline, Task
+    from flytelineage.interface import Pipeline, Task
 
     pipeline = Pipeline(
         id="1",
@@ -113,7 +113,7 @@ def test_make_pipeline_snaphot():
 
 def test_make_dataset_snaphot():
     target = make_target()
-    from lineage.dataset import DatasetSchema
+    from flytelineage.dataset import DatasetSchema
     import pandas as pd
     import numpy as np
 
@@ -127,7 +127,7 @@ def test_make_dataset_snaphot():
             "F": "foo",
         }
     )
-    from lineage.utils import infer_schema
+    from flytelineage.utils import infer_schema
 
     schema, source_schema = infer_schema(df, "foo")
     assert schema.shape == (4, 7)
@@ -143,7 +143,7 @@ def test_make_dataset_snaphot():
 
 def test_make_task_snaphot():
     target = make_target()
-    from lineage.interface import Pipeline, Task
+    from flytelineage.interface import Pipeline, Task
 
     pipeline = Pipeline(id="1", name="p1")
     task = Task(
@@ -168,7 +168,7 @@ def test_make_task_snaphot():
 
 @pytest.fixture()
 def pipeline():
-    from lineage.interface import Pipeline, Task
+    from flytelineage.interface import Pipeline, Task
 
     pipeline = Pipeline(
         id="1",
@@ -246,7 +246,7 @@ def test_build_mce_pipeline(pipeline):
 
 def test_ingest(pipeline):
     target = make_target()
-    from lineage.dataset import DatasetSchema
+    from flytelineage.dataset import DatasetSchema
     import numpy as np
     import pandas as pd
 

@@ -4,7 +4,7 @@ import pandas as pd
 import pyarrow as pa
 from .dataset import DatasetSchema
 from .interface import TargetSystem, SchemaConverter, Pipeline, Task
-from lineage import error_traceback
+from flytelineage import error_traceback
 from datahub.metadata.com.linkedin.pegasus2avro.metadata.snapshot import DatasetSnapshot
 from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent
 from datahub.emitter.rest_emitter import DatahubRestEmitter
@@ -51,11 +51,11 @@ logger = logging.getLogger(__name__)
 T = typing.TypeVar("T")
 
 
-def tags(tags: typing.List[str]):
+def tags(tags: typing.List[str]) -> GlobalTagsClass:
     return GlobalTagsClass(tags=[TagAssociationClass(f"urn:li:tag:{x}") for x in tags])
 
 
-def audit_stamp(dt, platform):
+def audit_stamp(dt, platform: str) -> AuditStamp:
     actor = f"urn:li:corpuser:{platform}_executor"
     return AuditStamp(
         time=int(dt.timestamp() * 1000),
@@ -63,7 +63,9 @@ def audit_stamp(dt, platform):
     )
 
 
-def owners(owners: typing.List[str], ownership_type=None):
+def owners(
+    owners: typing.List[str], ownership_type: OwnershipTypeClass = None
+) -> OwnershipClass:
     ownership_type = ownership_type or OwnershipTypeClass.DATAOWNER
     return OwnershipClass(
         owners=[
@@ -74,6 +76,8 @@ def owners(owners: typing.List[str], ownership_type=None):
 
 
 class DataHubSchemaConverter(SchemaConverter):
+    """DataHubSchemaConverter converts a ``pyarray.Schema`` to datahubs SchemaField list"""
+
     # pyarrow.lib.Field.type to DataHub classes
     _field_type_mapping: typing.Dict[str, T] = {
         # scalars
@@ -107,7 +111,7 @@ class DataHubSchemaConverter(SchemaConverter):
         "binary": BytesTypeClass,
     }
 
-    def get_complex_type(self, source_field):
+    def get_complex_type(self, source_field: pa.Field) -> T:
         source_type = str(source_field.type)
         target_class_type = None
         if source_type.startswith("list"):
@@ -117,10 +121,11 @@ class DataHubSchemaConverter(SchemaConverter):
         # TODO: support other complex types (struct etc)
         return target_class_type
 
-    def convert(self, source_schema: pa.Schema) -> typing.List:
+    def convert(self, source_schema: pa.Schema) -> typing.List[SchemaField]:
         """Convert source schema represented by pyarrow schema to DataHub. Error if any
         field fails conversion.
-        https://arrow.apache.org/docs/python/generated/pyarrow.Field.html#pyarrow.Field
+
+        see ``https://arrow.apache.org/docs/python/generated/pyarrow.Field.html#pyarrow.Field``
         """
         schema = []
         for source_field in source_schema:
@@ -141,8 +146,6 @@ class DataHubSchemaConverter(SchemaConverter):
                 description=source_field.name,
                 recursive=False,
                 nullable=source_field.nullable,
-                # isPartOfKey=False
-                # globalTags= GlobalTagsClass(tags=[TagAssociationClass(f"urn:li:tag:{tag}") for tag in tags])
             )
             schema.append(field)
         return schema
@@ -176,7 +179,11 @@ class DataHubTarget(TargetSystem):
         self.datasets_only = datasets_only
         self.just_testing = just_testing
 
-    def ingest(self, pipeline, datasets):
+    def ingest(
+        self,
+        pipeline: Pipeline,
+        datasets: typing.List[typing.Tuple[DatasetSchema, pa.Schema, pd.DataFrame]],
+    ):
         logger.info(f"DataHub ingestion for {pipeline.name}")
         for dataset_info in datasets:
             dataset_schema, source_schema, _ = dataset_info

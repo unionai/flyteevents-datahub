@@ -4,7 +4,7 @@ import numpy as np
 
 
 def make_ds(name="foo", **kwargs):
-    from lineage.dataset import DatasetSchema
+    from flytelineage.dataset import DatasetSchema
 
     return DatasetSchema(name, **kwargs)
 
@@ -81,7 +81,7 @@ def test_json_complex():
     f = io.BytesIO(json_data.encode())
     df = json.read_json(f)
     schema = ds.infer(df)
-    from lineage.datahub import DataHubSchemaConverter
+    from flytelineage.datahub import DataHubSchemaConverter
 
     converter = DataHubSchemaConverter()
     target_schema = converter.convert(schema)

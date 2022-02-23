@@ -134,3 +134,7 @@ Create a PR against the upstream repo
 
     $ black .
 
+Remove unused imports
+
+    $ autoflake -i --remove-all-unused-imports <files>
+

@@ -13,21 +13,21 @@ def moto_sqs():
 
 
 def test_sqssource_ctor(moto_sqs):
-    from lineage.flyte import SQSSource
+    from flytelineage.app import SQSSource
 
     sqs_source = SQSSource("foo")
     assert isinstance(sqs_source, SQSSource)
 
 
 def test_sqssource_ctor_q_uri(moto_sqs):
-    from lineage.flyte import SQSSource
+    from flytelineage.app import SQSSource
 
     sqs_source = SQSSource(moto_sqs.url)
     assert isinstance(sqs_source, SQSSource)
 
 
 def test_sqssource_read(moto_sqs):
-    from lineage.flyte import SQSSource
+    from flytelineage.app import SQSSource
 
     sqs_source = SQSSource("foo")
     result = sqs_source.read()
@@ -35,7 +35,7 @@ def test_sqssource_read(moto_sqs):
 
 
 def test_sqssource_read_and_complete(moto_sqs):
-    from lineage.flyte import SQSSource
+    from flytelineage.app import SQSSource
 
     sqs_source = SQSSource("foo")
     moto_sqs.send_message(MessageBody="Hello World")
@@ -46,7 +46,7 @@ def test_sqssource_read_and_complete(moto_sqs):
 
 
 def test_flytelineage_ctor():
-    from lineage.flyte import FlyteLineage
+    from flytelineage.app import FlyteLineage
 
     flyte = FlyteLineage.instance()
     assert flyte.config is not None

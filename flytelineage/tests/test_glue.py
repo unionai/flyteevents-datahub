@@ -25,17 +25,17 @@ def moto_glue():
 
 
 def test_glue(moto_glue, moto_s3):
-    from lineage.glue import GlueCatalogTarget
+    from flytelineage.glue import GlueCatalogTarget
 
     target = GlueCatalogTarget(bucket_path="bucket/prefix", kms_key_arn="bogus")
 
-    from lineage.interface import Pipeline
+    from flytelineage.interface import Pipeline
 
     pipeline = Pipeline(
         id="1",
         name="a.b.c",
     )
-    from lineage.dataset import DatasetSchema
+    from flytelineage.dataset import DatasetSchema
     import numpy as np
     import pandas as pd
 
@@ -56,19 +56,19 @@ def test_glue_with_db(moto_glue, moto_s3):
     import awswrangler as wr
 
     wr.catalog.create_database(name=database_name)
-    from lineage.glue import GlueCatalogTarget
+    from flytelineage.glue import GlueCatalogTarget
 
     target = GlueCatalogTarget(
         bucket_path="bucket/prefix", kms_key_arn="bogus", db_name=database_name
     )
 
-    from lineage.interface import Pipeline
+    from flytelineage.interface import Pipeline
 
     pipeline = Pipeline(
         id="1",
         name="a.b.c",
     )
-    from lineage.dataset import DatasetSchema
+    from flytelineage.dataset import DatasetSchema
     import numpy as np
     import pandas as pd
 
@@ -84,17 +84,17 @@ def test_glue_with_db(moto_glue, moto_s3):
 
 
 def test_glue_error(moto_glue, moto_s3):
-    from lineage.glue import GlueCatalogTarget
+    from flytelineage.glue import GlueCatalogTarget
 
     target = GlueCatalogTarget(bucket_path="bucket/prefix", kms_key_arn="bogus")
 
-    from lineage.interface import Pipeline
+    from flytelineage.interface import Pipeline
 
     pipeline = Pipeline(
         id="1",
         name="a.b.c",
     )
-    from lineage.dataset import DatasetSchema
+    from flytelineage.dataset import DatasetSchema
     import numpy as np
     import pandas as pd
 

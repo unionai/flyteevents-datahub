@@ -12,26 +12,26 @@ with open("CHANGES.txt") as f:
 
 # Get the current package version.
 version_ns = {}
-with open(pjoin(here, "lineage", "_version.py")) as f:
+with open(pjoin(here, "flytelineage", "_version.py")) as f:
     exec(f.read(), {}, version_ns)
 
 
 setup(
-    name="lineage",
+    name="flytelineage",
     version=version_ns["__version__"],
-    description="Data Lineage Python Library",
+    description="Data Lineage Python App & Library",
     long_description=long_description + "\n\n" + changes,
     classifiers=[
         "Programming Language :: Python",
         "Topic :: Internet :: WWW/HTTP",
     ],
     url="",
-    keywords="Data Lineage",
+    keywords="Flyte Data Lineage",
     packages=find_packages(),
     include_package_data=True,
     zip_safe=False,
     entry_points="""\
       [console_scripts]
-      flytelineage = lineage.flyte:main
+      flytelineage = flytelineage.app:main
       """,
 )

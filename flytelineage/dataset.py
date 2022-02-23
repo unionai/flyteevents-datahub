@@ -1,6 +1,5 @@
-from datetime import datetime
-import typing
 from hashlib import md5
+import typing
 import logging
 import copy
 import pandas as pd
@@ -11,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class DatasetSchema(object):
     """DatasetSchema infers a pyarrow schema from a dataset.
-    PyArrows schema is used as its superior to Pandas.
+    PyArrows schema is used as its more complete than Pandas.
     """
 
     def __init__(
@@ -40,14 +39,14 @@ class DatasetSchema(object):
         self.tags = tags or []
         self.metadata = metadata or {}
 
-    def merge_metadata(self):
+    def merge_metadata(self) -> typing.Dict:
         # assert(self.schema)
         metadata = copy.deepcopy(self.metadata)
         metadata["shape"] = str(self.shape)
         metadata["nbytes"] = str(self.nbytes)
         return metadata
 
-    def infer(self, dataset):
+    def infer(self, dataset: typing.Union[pa.Table, pd.DataFrame]) -> pa.Schema:
         # using pa.Table to get shape & size info & schema
         # start with support for the ubiquitous pandas dataframe
         if isinstance(dataset, pa.Table):
@@ -60,7 +59,7 @@ class DatasetSchema(object):
             self.schema = table.schema
         return self.schema
 
-    def hash(self):
+    def hash(self) -> str:
         # assert(self.schema)
         field_type_names = "".join(sorted([str(x.type) for x in self.schema]))
         return md5((self.name + field_type_names).encode()).hexdigest()

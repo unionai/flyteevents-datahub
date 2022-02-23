@@ -1,5 +1,5 @@
-from typing import TypeVar, Any, Dict, List
-from .interface import DatasetSchema, TargetSystem
+from typing import TypeVar
+from .dataset import DatasetSchema
 
 T = TypeVar("T")
 
