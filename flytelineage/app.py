@@ -256,7 +256,7 @@ class FlyteLineage(Application):
     def launch_instance(cls, argv=None):
         try:
             self = cls.instance()
-            self.initialize(argv)
+            self.initialize(argv)    
             self.process_events(workflow=WorkflowEvents())
         except Exception as e:
             msg = f"error: exception={e}, traceback={error_traceback()}"

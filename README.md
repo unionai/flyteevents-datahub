@@ -11,7 +11,7 @@ Initial support for Flyte -> (DataHub, AWS Glue Catalog)
 ## Introduction
 
 Data lineage is extracted from Flyte by consuming events sent from FlyetAdmin during a workflow run. A workflow is ingested into one or more target systems.
-Supported targets include [DataHub](https://datahubproject.io/) and the [AWS Glue Catalog](https://docs.aws.amazon.com/glue/latest/dg/aws-glue-api-catalog.html). Both targets currently overrwrite any previous versions.
+Supported targets include [DataHub](https://datahubproject.io/) and the [AWS Glue Catalog](https://docs.aws.amazon.com/glue/latest/dg/aws-glue-api-catalog.html). The DataHUb target overwrites any previous versions and Glue supports schema versioning if enabled.
 
 
 ### DataHub
@@ -24,7 +24,7 @@ For example a pipeline can consist of many directed tasks with associated input 
 
 ### AWS Glue Catalog
 
-Datasets are ingested into the Glue Catalog. A table is created for the dataset and optionally a database created to contain the table.
+Datasets are ingested into the Glue Catalog. A table is created for the dataset and optionally a database created to contain the table. The database name if not supplied will be named based on the flyte using flyte_<domain>_<project>.
 
 
 ## Flight lineage server 
@@ -33,32 +33,87 @@ Flyte publishes SNS topics to an SQS queue for different workflow lifecycle even
 The events of interest for a workflow are grouped and processed to produce data lineage. The lineage includes the chain of workflow tasks and any datasets used within the flow. Only successfully run workflows are captured and datasets that are not fetched from the flyte cache.
 The lineage is then ingested by the configured targets.
 
-[traitlets](https://traitlets.readthedocs.io/en/stable/index.html) from Jupyter is used for the application configuration which can be configured within classes, as cmd line args or in a python config file (./flytelineage_config.py).
+[traitlets](https://traitlets.readthedocs.io/en/stable/index.html) from Jupyter is used for the application configuration which can be configured within with defaults in classes, as cmd line args or in a python config file (./flytelineage_config.py).
 
-    $ flytelineage --help-all
-    Flyte data lineage
-
-    EventProcessor(Application) options                                                                            
-    -----------------------------------                                                                            
-    --EventProcessor.aws_region=<Unicode>                                                                          
-        aws region                                                                                                 
-        Default: 'us-east-1'                                                                                       
-    --EventProcessor.config_file=<Unicode>                                                                         
-        The config file to load                                                                                    
-        Default: 'flytelineage_config.py'                                                                          
-    --EventProcessor.log_datefmt=<Unicode>                                                                         
-        The date format used by logging formatters for %(asctime)s                                                 
-        Default: '%Y-%m-%d %H:%M:%S'                                                                               
-    --EventProcessor.log_format=<Unicode>                                                                          
-        The Logging format template                                                                                
-        Default: '[%(name)s]%(highlevel)s %(message)s'                                                             
-    --EventProcessor.log_level=<Enum>                                                                              
-        Set the log level by value or name.                                                                        
-        Choices: any of [0, 10, 20, 30, 40, 50, 'DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL']                      
-        Default: 30                                                                                                                                                                               
-    --EventProcessor.sqs_queue=<Unicode>                                                                           
-        sqs queue name or url                                                                                      
-        Default: ''                                                                                                                                                  
+    $ flytelineage --help-all                                                                                                 
+    Flyte data lineage                                                                                                        
+                                                                                                                            
+    Options                                                                                                                   
+    =======                                                                                                                   
+    The options below are convenience aliases to configurable class-options,                                                  
+    as listed in the "Equivalent to" description-line of the aliases.                                                         
+    To see all configurable class-options for some <cmd>, use:                                                                
+        <cmd> --help-all                                                                                                      
+                                                                                                                            
+    --debug                                                                                                                   
+        Set log-level to debug, for the most verbose logging.                                                                 
+        Equivalent to: [--Application.log_level=10]                                                                           
+    --show-config                                                                                                             
+        Show the application's configuration (human-readable format)                                                          
+        Equivalent to: [--Application.show_config=True]                                                                       
+    --show-config-json                                                                                                        
+        Show the application's configuration (json format)                                                                    
+        Equivalent to: [--Application.show_config_json=True]                                                                  
+    --log-level=<Enum>                                                                                                        
+        Set the log level by value or name.                                                                                   
+        Choices: any of [0, 10, 20, 30, 40, 50, 'DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL']                                 
+        Default: 30                                                                                                           
+        Equivalent to: [--Application.log_level]                                                                              
+                                                                                                                            
+    Class options                                                                                                             
+    =============                                                                                                             
+    The command-line option below sets the respective configurable class-parameter:                                           
+        --Class.parameter=value                                                                                               
+    This line is evaluated in Python, so simple expressions are allowed.                                                      
+    For instance, to set `C.a=[0,1,2]`, you may type this:                                                                    
+        --C.a='range(3)'                                                                                                      
+                                                                                                                            
+    Application(SingletonConfigurable) options                                                                                
+    ------------------------------------------                                                                                
+    --Application.log_datefmt=<Unicode>                                                                                       
+        The date format used by logging formatters for %(asctime)s                                                            
+        Default: '%Y-%m-%d %H:%M:%S'                                                                                          
+    --Application.log_format=<Unicode>                                                                                        
+        The Logging format template                                                                                           
+        Default: '[%(name)s]%(highlevel)s %(message)s'                                                                        
+    --Application.log_level=<Enum>                                                                                            
+        Set the log level by value or name.                                                                                   
+        Choices: any of [0, 10, 20, 30, 40, 50, 'DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL']                                 
+        Default: 30                                                                                                           
+    --Application.show_config=<Bool>                                                                                          
+        Instead of starting the Application, dump configuration to stdout                                                     
+        Default: False                                                                                                        
+    --Application.show_config_json=<Bool>                                                                                     
+        Instead of starting the Application, dump configuration to stdout (as JSON)                                           
+        Default: False                                                                                                        
+                                                                                                                            
+    FlyteLineage(Application) options                                                                                         
+    ---------------------------------                                                                                         
+    --FlyteLineage.aws_region=<Unicode>                                                                                       
+        aws region                                                                                                            
+        Default: 'us-east-1'                                                                                                  
+    --FlyteLineage.config_file=<Unicode>                                                                                      
+        The config file to load                                                                                               
+        Default: 'flytelineage_config.py'                                                                                     
+    --FlyteLineage.log_datefmt=<Unicode>                                                                                      
+        The date format used by logging formatters for %(asctime)s                                                            
+        Default: '%Y-%m-%d %H:%M:%S'                                                                                          
+    --FlyteLineage.log_format=<Unicode>                                                                                       
+        The Logging format template                                                                                           
+        Default: '[%(name)s]%(highlevel)s %(message)s'                                                                        
+    --FlyteLineage.log_level=<Enum>                                                                                           
+        Set the log level by value or name.                                                                                   
+        Choices: any of [0, 10, 20, 30, 40, 50, 'DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL']                                 
+        Default: 30                                                                                                           
+    --FlyteLineage.show_config=<Bool>                                                                                         
+        Instead of starting the Application, dump configuration to stdout                                                     
+        Default: False                                                                                                        
+    --FlyteLineage.show_config_json=<Bool>                                                                                    
+        Instead of starting the Application, dump configuration to stdout (as JSON)                                           
+        Default: False                                                                                                        
+    --FlyteLineage.sqs_queue=<Unicode>                                                                                        
+        sqs queue name or url                                                                                                 
+        Default: ''                                                                                                           ''                                                                                                                                                  
 ## Development
 
     $ git clone https://github.com/unionai/flyteevents-datahub.git
@@ -124,7 +179,7 @@ Create a PR against the upstream repo
     
     # Run tests with coverage reporting
     $ pytest --cov  
-    $ pytest --cov=lineage --cov-report term-missing lineage 
+    $ pytest --cov=flytelineage --cov-report term-missing flytelineage 
 
     # Run tests with logging
     $ pytest --log-level=DEBUG 

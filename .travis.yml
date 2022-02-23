@@ -12,7 +12,7 @@ install:
 
 # command to run tests
 script:
-  - pytest --cov=lineage --cov-report term-missing lineage 
+  - pytest --cov=flytelineage --cov-report term-missing flytelineage 
 
 after_success:
     coveralls    

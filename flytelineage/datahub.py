@@ -76,7 +76,7 @@ def owners(
 
 
 class DataHubSchemaConverter(SchemaConverter):
-    """DataHubSchemaConverter converts a ``pyarray.Schema`` to datahubs SchemaField list"""
+    """DataHubSchemaConverter converts a ``pyarrow.Schema`` to a datahub SchemaField list"""
 
     # pyarrow.lib.Field.type to DataHub classes
     _field_type_mapping: typing.Dict[str, T] = {

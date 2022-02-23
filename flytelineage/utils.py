@@ -1,10 +1,9 @@
-from typing import TypeVar
+from typing import Union
 from .dataset import DatasetSchema
+import pandas as pd
+import pyarrow as pa
 
-T = TypeVar("T")
-
-
-def infer_schema(dataset: T, name: str, **kwargs):
+def infer_schema(dataset: Union[pa.Table, pd.DataFrame], name: str, **kwargs):
     dataset_schema = DatasetSchema(name, **kwargs)
     source_schema = dataset_schema.infer(dataset)
     if not source_schema:

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class GlueCatalogTarget(TargetSystem):
     """AWS Glue target lineage system
 
-    ``bucket_path`` S3 glue bucket path e.g. my-glue-bucket
+    ``bucket_path`` S3 glue bucket path e.g. my-glue-bucket or my-glue-bucket/db
     ``kms_key_arn`` kms key arn used for S3 access
     ``versioning`` set to True to enable schema versioning, defaults to False
     """

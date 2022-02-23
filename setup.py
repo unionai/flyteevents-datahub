@@ -19,7 +19,7 @@ with open(pjoin(here, "flytelineage", "_version.py")) as f:
 setup(
     name="flytelineage",
     version=version_ns["__version__"],
-    description="Data Lineage Python App & Library",
+    description="Flyte Data Lineage Python App & Library",
     long_description=long_description + "\n\n" + changes,
     classifiers=[
         "Programming Language :: Python",
