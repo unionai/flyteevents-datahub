@@ -50,7 +50,7 @@ class SQSSource(object):
             self._queue_url = response["QueueUrl"]
         logger.info(f"will be reading from queue: {self._queue_url}")
 
-    def read(self):
+    def read(self) -> typing.Tuple[typing.Dict, str]:
         # Receive message from SQS queue
         response = self._sqs.receive_message(
             QueueUrl=self._queue_url,
@@ -144,7 +144,7 @@ class FlyteLineage(Application):
 
     def transform_message(
         self,
-        message: str,
+        message: typing.Dict,
     ) -> EVENT_TYPES:
         message_obj = json.loads(message["Body"])
         encoded_pb = message_obj["Message"]
