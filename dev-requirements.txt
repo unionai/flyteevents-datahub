@@ -2,3 +2,5 @@ black
 pytest
 codecov
 pytest-cov
+moto
+autoflake

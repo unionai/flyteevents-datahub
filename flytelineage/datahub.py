@@ -4,6 +4,7 @@ import pandas as pd
 import pyarrow as pa
 from .dataset import DatasetSchema
 from .interface import TargetSystem, SchemaConverter, Pipeline, Task
+from flytelineage import error_traceback
 from datahub.metadata.com.linkedin.pegasus2avro.metadata.snapshot import DatasetSnapshot
 from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent
 from datahub.emitter.rest_emitter import DatahubRestEmitter
@@ -50,11 +51,11 @@ logger = logging.getLogger(__name__)
 T = typing.TypeVar("T")
 
 
-def tags(tags: typing.List[str]):
+def tags(tags: typing.List[str]) -> GlobalTagsClass:
     return GlobalTagsClass(tags=[TagAssociationClass(f"urn:li:tag:{x}") for x in tags])
 
 
-def audit_stamp(dt, platform):
+def audit_stamp(dt, platform: str) -> AuditStamp:
     actor = f"urn:li:corpuser:{platform}_executor"
     return AuditStamp(
         time=int(dt.timestamp() * 1000),
@@ -62,7 +63,9 @@ def audit_stamp(dt, platform):
     )
 
 
-def owners(owners: typing.List[str], ownership_type=None):
+def owners(
+    owners: typing.List[str], ownership_type: OwnershipTypeClass = None
+) -> OwnershipClass:
     ownership_type = ownership_type or OwnershipTypeClass.DATAOWNER
     return OwnershipClass(
         owners=[
@@ -73,10 +76,13 @@ def owners(owners: typing.List[str], ownership_type=None):
 
 
 class DataHubSchemaConverter(SchemaConverter):
+    """DataHubSchemaConverter converts a ``pyarrow.Schema`` to a datahub SchemaField list"""
+
     # pyarrow.lib.Field.type to DataHub classes
     _field_type_mapping: typing.Dict[str, T] = {
         # scalars
         "None": NullTypeClass,
+        "null": NullTypeClass,
         "bool": BooleanTypeClass,
         "int8": NumberTypeClass,
         "int16": NumberTypeClass,
@@ -105,17 +111,31 @@ class DataHubSchemaConverter(SchemaConverter):
         "binary": BytesTypeClass,
     }
 
-    def convert(self, source_schema: pa.Schema) -> typing.List:
+    def get_complex_type(self, source_field: pa.Field) -> T:
+        source_type = str(source_field.type)
+        target_class_type = None
+        if source_type.startswith("list"):
+            target_class_type = ArrayTypeClass
+        elif source_type.startswith("dictionary"):
+            target_class_type = MapTypeClass
+        # TODO: support other complex types (struct etc)
+        return target_class_type
+
+    def convert(self, source_schema: pa.Schema) -> typing.List[SchemaField]:
         """Convert source schema represented by pyarrow schema to DataHub. Error if any
         field fails conversion.
-        https://arrow.apache.org/docs/python/generated/pyarrow.Field.html#pyarrow.Field
+
+        see ``https://arrow.apache.org/docs/python/generated/pyarrow.Field.html#pyarrow.Field``
         """
         schema = []
         for source_field in source_schema:
             source_type = str(source_field.type)
-            datahub_type_cls = self._field_type_mapping.get(source_type)
+            if source_type.startswith("list") or source_type.startswith("dictionary"):
+                datahub_type_cls = self.get_complex_type(source_field)
+            else:
+                datahub_type_cls = self._field_type_mapping.get(source_type)
             if not datahub_type_cls:
-                err_msg = f"Unable to map source pyarrow schema field '{source_field}' to DataHub"
+                err_msg = f"Unable to convert source pyarrow schema field '{source_field}' to DataHub"
                 logger.warning(err_msg)
                 # its all or nothing
                 raise ValueError(err_msg)
@@ -126,8 +146,6 @@ class DataHubSchemaConverter(SchemaConverter):
                 description=source_field.name,
                 recursive=False,
                 nullable=source_field.nullable,
-                # isPartOfKey=False
-                # globalTags= GlobalTagsClass(tags=[TagAssociationClass(f"urn:li:tag:{tag}") for tag in tags])
             )
             schema.append(field)
         return schema
@@ -139,11 +157,13 @@ class DataHubTarget(TargetSystem):
         server: str,
         platform: str = "flyte",
         env: str = "DEV",
+        datasets_only=False,
         token=None,
         connect_timeout=None,
         read_timeout=None,
         extra_headers=None,
         test_connection=True,
+        just_testing=False,
     ):
         self.emitter = DatahubRestEmitter(
             server,
@@ -156,6 +176,30 @@ class DataHubTarget(TargetSystem):
             self.emitter.test_connection()
         self.env = env
         self.platform = platform
+        self.datasets_only = datasets_only
+        self.just_testing = just_testing
+
+    def ingest(
+        self,
+        pipeline: Pipeline,
+        datasets: typing.List[typing.Tuple[DatasetSchema, pa.Schema, pd.DataFrame]],
+    ):
+        logger.info(f"DataHub ingestion for {pipeline.name}")
+        for dataset_info in datasets:
+            dataset_schema, source_schema, _ = dataset_info
+            try:
+                # emit dataset as its own entity
+                schema_converter = DataHubSchemaConverter()
+                target_schema = schema_converter.convert(source_schema)
+                logger.info(f"emitting dataset {dataset_schema.name}")
+                self.emit_dataset(target_schema, dataset_schema)
+                logger.info("emitted dataset")
+            except Exception as e:
+                msg = f"Unable to ingest data set '{dataset_schema.name}', error={e}, traceback={error_traceback()}"
+                logger.warning(msg)
+        if not self.datasets_only:
+            logger.info(f"emit pipeline: {pipeline.name}")
+            self.emit_pipeline(pipeline)
 
     def make_dataset_snapshot(
         self, schema: typing.List[SchemaField], dataset_schema: DatasetSchema
@@ -163,9 +207,7 @@ class DataHubTarget(TargetSystem):
         platform = self.platform
         env = self.env
         logger.info(f"creating dataset snapshot: {dataset_schema.name}")
-        logger.debug(
-            f"dataset: {dataset_schema}, datahub: {schema}"
-        )
+        logger.debug(f"dataset: {dataset_schema}, datahub: {schema}")
         dataset_urn = mce_builder.make_dataset_urn(platform, dataset_schema.name, env)
         dataset_snapshot = DatasetSnapshot(
             urn=dataset_urn,
@@ -208,16 +250,20 @@ class DataHubTarget(TargetSystem):
 
     def emit_mce(self, mce: MetadataChangeEvent):
         logger.debug(f"mce: {mce}")
-        self.emitter.emit_mce(mce)
+        if not self.just_testing:
+            self.emitter.emit_mce(mce)
 
     def emit_dataset(
-        self, schema: typing.List[SchemaField], dataset_schema: DatasetSchema
+        self,
+        schema: typing.List[SchemaField],
+        dataset_schema: DatasetSchema,
+        dataset: pd.DataFrame = None,
     ):
         dataset_snapshot = self.make_dataset_snapshot(schema, dataset_schema)
         mce = MetadataChangeEvent(proposedSnapshot=dataset_snapshot)
         self.emit_mce(mce)
 
-    def make_task_snaphot(self, pipeline: Pipeline, task: Task):
+    def make_task_snapshot(self, pipeline: Pipeline, task: Task):
         platform = self.platform
         env = self.env
         job_urn = mce_builder.make_data_job_urn(platform, pipeline.name, task.name, env)
@@ -286,18 +332,15 @@ class DataHubTarget(TargetSystem):
         )
         task_mces = []
         for task in pipeline.tasks:
-            task_snapshot = self.make_task_snaphot(pipeline, task)
+            task_snapshot = self.make_task_snapshot(pipeline, task)
             task_mces.append(MetadataChangeEvent(proposedSnapshot=task_snapshot))
         return [flow_mce] + task_mces
 
     def emit_task(self, pipeline: Pipeline, task: Task):
-        snapshot = make_task_snaphot(pipeline, task)
+        snapshot = self.make_task_snapshot(pipeline, task)
         self.emit_mce(MetadataChangeEvent(proposedSnapshot=snapshot))
 
     def emit_pipeline(self, pipeline: Pipeline):
         mces = self.build_mce_pipeline(pipeline)
         for mce in mces:
             self.emit_mce(mce)
-
-    def make_schema_converter(self) -> SchemaConverter:
-        return DataHubSchemaConverter()

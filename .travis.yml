@@ -1,0 +1,18 @@
+language: python
+python:
+  - "3.8"
+  - "3.9"
+  - "3.9-dev"  # 3.9 development branch
+# command to install dependencies
+install:
+   - travis_retry pip install -r requirements.txt
+   - travis_retry pip install -r dev-requirements.txt
+   - travis_retry pip install coveralls
+   - travis_retry python setup.py install
+
+# command to run tests
+script:
+  - pytest --cov=flytelineage --cov-report term-missing flytelineage 
+
+after_success:
+    coveralls    

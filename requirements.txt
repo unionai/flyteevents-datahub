@@ -2,7 +2,9 @@ flytekit
 flyteidl
 awscli
 boto3>=1.20.20
-acryl-datahub
+acryl-datahub>=0.8.26.8
 pandas
 pyarrow
 numpy
+traitlets
+awswrangler
