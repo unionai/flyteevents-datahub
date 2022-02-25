@@ -5,11 +5,12 @@ import pyarrow as pa
 from .dataset import DatasetSchema
 from .interface import TargetSystem, SchemaConverter, Pipeline, Task
 from flytelineage import error_traceback
-from datahub.metadata.com.linkedin.pegasus2avro.metadata.snapshot import DatasetSnapshot
+from datahub.metadata.com.linkedin.pegasus2avro.metadata.snapshot import (
+    DatasetSnapshot,
+)
 from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent
 from datahub.emitter.rest_emitter import DatahubRestEmitter
 from datahub.emitter import mce_builder
-from datahub.ingestion.api.source import Source
 from datahub.metadata.com.linkedin.pegasus2avro.common import AuditStamp, Status
 from datahub.metadata.schema_classes import (
     DatasetPropertiesClass,
@@ -31,19 +32,14 @@ from datahub.metadata.com.linkedin.pegasus2avro.schema import (
     BooleanTypeClass,
     BytesTypeClass,
     DateTypeClass,
-    EnumTypeClass,
-    FixedTypeClass,
     MapTypeClass,
     NullTypeClass,
     NumberTypeClass,
-    RecordTypeClass,
     SchemaField,
     SchemaFieldDataType,
     StringTypeClass,
     TimeTypeClass,
-    UnionTypeClass,
     SchemaMetadata,
-    SchemalessClass,
     OtherSchema,
 )
 

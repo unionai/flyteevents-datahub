@@ -80,7 +80,7 @@ def test_tags():
 
 def test_make_pipeline_snaphot():
     target = make_target()
-    from flytelineage.interface import Pipeline, Task
+    from flytelineage.interface import Pipeline
 
     pipeline = Pipeline(
         id="1",
@@ -113,7 +113,6 @@ def test_make_pipeline_snaphot():
 
 def test_make_dataset_snaphot():
     target = make_target()
-    from flytelineage.dataset import DatasetSchema
     import pandas as pd
     import numpy as np
 
@@ -134,7 +133,9 @@ def test_make_dataset_snaphot():
     schema_converter = make_converter()
     datahub_schema = schema_converter.convert(source_schema)
     dataset_snapshot = target.make_dataset_snapshot(datahub_schema, schema)
-    from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent
+    from datahub.metadata.com.linkedin.pegasus2avro.mxe import (
+        MetadataChangeEvent,
+    )
 
     mce = MetadataChangeEvent(proposedSnapshot=dataset_snapshot)
     raw_mce_obj = mce.proposedSnapshot.to_obj()
@@ -159,7 +160,9 @@ def test_make_task_snaphot():
         str(snapshot)
         == "DataJobSnapshotClass({'urn': 'urn:li:dataJob:(urn:li:dataFlow:(flyte,p1,DEV),news.workflows.covid.get)', 'aspects': [DataJobInfoClass({'customProperties': {}, 'externalUrl': 'https://flyte-poc.dev.aws.great.net/console/projects/poc/domains/development/executions/ydc4x7appp', 'name': 'news.workflows.covid.get', 'description': 'get', 'type': 'COMMAND', 'flowUrn': None, 'status': None}), DataJobInputOutputClass({'inputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,covid,DEV)'], 'outputDatasets': ['urn:li:dataset:(urn:li:dataPlatform:flyte,world_population,DEV)'], 'inputDatajobs': None}), OwnershipClass({'owners': [], 'lastModified': AuditStampClass({'time': 0, 'actor': 'urn:li:corpuser:unknown', 'impersonator': None})})]})"
     )
-    from datahub.metadata.com.linkedin.pegasus2avro.mxe import MetadataChangeEvent
+    from datahub.metadata.com.linkedin.pegasus2avro.mxe import (
+        MetadataChangeEvent,
+    )
 
     mce = MetadataChangeEvent(proposedSnapshot=snapshot)
     raw_mce_obj = mce.proposedSnapshot.to_obj()

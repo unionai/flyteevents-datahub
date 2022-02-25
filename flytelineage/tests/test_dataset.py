@@ -1,4 +1,3 @@
-import pytest
 import pandas as pd
 import numpy as np
 
@@ -11,13 +10,13 @@ def make_ds(name="foo", **kwargs):
 
 def test_np_1d():
     ds = make_ds()
-    a = np.arange(0, 10, dtype=np.int64)
+    a = np.arange(0, 10)
     schema = ds.infer(pd.DataFrame(a))
     assert len(schema) == 1
-    assert str(schema[0].type) == "int64"
+    assert str(schema[0].type).startswith("int")
     assert str(schema[0].name) == "0"
     assert ds.shape == (10, 1)
-    assert ds.nbytes == 80
+    assert ds.nbytes == 80 if str(schema[0].type) == "int64" else 40 
 
 
 def test_np_matrix():
@@ -35,7 +34,6 @@ def test_np_matrix_cols():
     assert len(schema) == 3
     assert ds.shape == (2, 3)
     assert schema.names == ["A", "B", "C"]
-    import pyarrow as pa
 
     assert str(schema[0].type) == "string"
     assert str(schema[1].type) == "string"

@@ -210,13 +210,16 @@ class FlyteLineage(Application):
 
     def is_successful_new_workflow(self, events: EVENT_TYPES) -> bool:
         completed = False
-        # assuming here there is always an output uri even for void returns
         if self.has_successful_workflow(events):
-            # current policy is to only capture workflows when all tasks have been executed
-            # this excludes any workflows with tasks outputs retrieved from the cache
+            # policy is to only capture workflows when all tasks have been executed
+            # this excludes any workflows with tasks outputs retrieved from the cache as
             # these don't run the task so there is no corresponding task event for the node
             completed = len(WorkflowEvents.get_successful_task_events(events)) == len(
                 WorkflowEvents.get_successful_node_events(events).keys()
+            )
+            self.log.info(
+                f"found a completed workflow, do we have the same number of successful"
+                f" task and node events? {'yes' if completed else 'no!'}"
             )
         return completed
 
@@ -256,7 +259,7 @@ class FlyteLineage(Application):
     def launch_instance(cls, argv=None):
         try:
             self = cls.instance()
-            self.initialize(argv)    
+            self.initialize(argv)
             self.process_events(workflow=WorkflowEvents())
         except Exception as e:
             msg = f"error: exception={e}, traceback={error_traceback()}"
