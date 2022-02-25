@@ -1,7 +1,7 @@
 # Flyte Data Lineage
 
 [![version](https://img.shields.io/badge/version-0.0.2-yellow.svg)](https://semver.org)
-[![Build Status](https://app.travis-ci.com/erowan/flyteevents-datahub.svg?branch=glue-support)](https://travis-ci.com/erowan/flyteevents-datahub)
+[![tests](https://github.com/unionai/flyteevents-datahub/actions/workflows/python-app.yml/badge.svg)](https://github.com/unionai/flyteevents-datahub/actions/workflows/python-app.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 Flyte Data Lineage Python Application and Library
