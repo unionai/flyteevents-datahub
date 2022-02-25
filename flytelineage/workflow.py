@@ -4,7 +4,7 @@ from datetime import datetime
 
 from flytelineage import error_traceback
 from .dataset import DatasetSchema
-from traitlets import List, Bool, Instance, default, Tuple
+from traitlets import List, Bool, Instance, default
 from traitlets.config import SingletonConfigurable, Config
 from .utils import infer_schema
 from flyteidl.admin import event_pb2 as admin_event_pb2
@@ -33,8 +33,6 @@ EVENT_TYPES = typing.Union[
 
 # TODO: reference the protobuf values directly
 NodeAndTaskExecutionPhaseSucceeded = 3
-CACHE_DISABLED = 0
-CACHE_POPULATED = 3
 
 
 class WorkflowEvents(SingletonConfigurable):
@@ -80,7 +78,9 @@ class WorkflowEvents(SingletonConfigurable):
             ctx.file_access.get_data(remote_path, local_path)
         except FlyteAssertion as e:
             # Getting this error using s3fs
-            # Original exception: The request signature we calculated does not match the signature you provided. Check your key and signing method.
+            # Original exception: The request signature we calculated does not match the signature you provided.
+            # Check your key and signing method.
+            # Make sure your http proxy is not modifying the headers
             logger.warning(
                 f"FlyteAssertion copying remote={remote_path} to local={local_path}, error={e}"
             )
@@ -185,10 +185,6 @@ class WorkflowEvents(SingletonConfigurable):
             name = task_event.task_id.name
             version = self.get_task_version(task_event)
             logger.debug(f"fetching output schemas for task '{name}'")
-            metadata = node_event.task_node_metadata
-            if not metadata.cache_status in (CACHE_DISABLED, CACHE_POPULATED):
-                logger.info(f"skip datasets being retrieved from the cache")
-                return schemas
 
             if task_event.HasField("output_uri"):
                 schemas = self.get_schemas(
@@ -231,7 +227,8 @@ class WorkflowEvents(SingletonConfigurable):
     def create_pipeline(
         self, events: typing.List[EVENT_TYPES]
     ) -> typing.Tuple[
-        Pipeline, typing.List[typing.Tuple[DatasetSchema, pa.Schema, pd.DataFrame]]
+        Pipeline,
+        typing.List[typing.Tuple[DatasetSchema, pa.Schema, pd.DataFrame]],
     ]:
         task_events = self.get_successful_task_events(events)
         node_events = self.get_successful_node_events(events)
@@ -305,17 +302,21 @@ class WorkflowEvents(SingletonConfigurable):
 
     def ingest(self, events: typing.List[EVENT_TYPES]):
         try:
-            logger.info(f"ingest")
+            logger.info("ingest")
             pipeline, schemas = self.create_pipeline(events)
             logger.debug(
-                f"pipeline '{pipeline.name}:{pipeline.id}'  has '{pipeline.number_of_tasks()}' tasks: {pipeline.task_names()} with schemas={ list([x[0].name for x in schemas]) }"
+                f"pipeline '{pipeline.name}:{pipeline.id}'  has '{pipeline.number_of_tasks()}' "
+                f"tasks: {pipeline.task_names()} with schemas={ list([x[0].name for x in schemas]) }"
             )
             if self.emit:
                 for target in self.targets:
                     try:
                         target.ingest(pipeline, schemas)
                     except Exception as e:
-                        msg = f"Unable to ingest pipeline '{pipeline.name}' with target '{target}', error={e}, traceback={error_traceback()}"
+                        msg = (
+                            f"Unable to ingest pipeline '{pipeline.name}' with target '{target}', "
+                            f"error={e}, traceback={error_traceback()}"
+                        )
                         logger.warning(msg)
         except Exception as e:
             msg = f"Unable to ingest pipeline, error={e}, traceback={error_traceback()}"

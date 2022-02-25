@@ -189,7 +189,12 @@ Create a PR against the upstream repo
 
     $ black .
 
-Remove unused imports
+### Remove unused imports
 
     $ autoflake -i --remove-all-unused-imports <files>
+
+### Fix suspect code
+
+    $ flake8 flytelineage --count --select=E9,F63,F7,F82 --show-source --statistics
+    $ flake8 flytelineage --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
